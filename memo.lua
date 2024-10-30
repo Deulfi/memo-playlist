@@ -1805,7 +1805,8 @@ mp.register_script_message('menu-event', function(json)
             end
         elseif event.action == 'add_to_playlist' or (event.modifiers == 'shift' and event.type == 'activate') then
             local file = event.value[2]
-            local title = mp.get_property("filename", file)
+            local _, title = mp.utils.split_path(file)
+	    mp.msg.debug('added to playlist: ' .. title)
             mp.osd_message('Added to playlist: ' .. title, 3)
             mp.commandv('loadfile', file, 'append')
         else
