@@ -54,7 +54,7 @@ local options = {
     --   Opening the file "/data/TV Shows/Comedy/Curb Your Enthusiasm/S4/E06.mkv" will
     --   lead to "Curb Your Enthusiasm" to be shown in the directory menu. Opening
     --   of that entry will then open that file again.
-    path_prefixes = "pattern:.*"
+    path_prefixes = "pattern:.*",
     --
 	-- playlist part
 	--
