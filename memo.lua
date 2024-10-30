@@ -1822,6 +1822,57 @@ mp.register_script_message('menu-event', function(json)
     end
 end)
 
+-- Function to read all lines from a file
+local function read_lines(file_path)
+    local lines = {}
+    local result = with_file(file_path, "r", function(file)
+        for line in file:lines() do
+            table.insert(lines, line)
+        end
+        return lines
+    end)
+    return result
+end
+
+-- Function to write lines to a file 
+local function write_lines(file_path, lines)
+    return with_file(file_path, "w", function(file)
+        for _, line in ipairs(lines) do
+            file:write(line, "\n")
+        end
+        return true
+    end)
+end
+
+-- Function to process lines and keep the last N items
+local function process_lines(lines, keep_n, ext)
+    local seen_paths = {}
+    local processed_lines = {}
+    local processed_playlists = {}
+    -- Iterate over lines in reverse order
+
+    for i = #lines, 1, -1 do
+        local line = lines[i]
+        -- Extract the path from the line
+        local path = line:match("[^,]*,[^,]*,[^,]*,([^,]*),")
+        if path and not seen_paths[path] then
+            seen_paths[path] = true
+            -- Keep lines that match any of these conditions: is below limit, is unique
+            if (keep_n == 0) or (#processed_lines < keep_n) then
+                table.insert(processed_lines, 1, line)
+            end
+            
+           
+            if path:match("%.[^%.]+$") == options.ext then
+                table.insert(processed_lines, 1, line)
+                 -- Track playlists separately
+                table.insert(processed_playlists, path)
+            end
+        end
+    end
+    return processed_lines, processed_playlists
+end
+
 -- Key binding function for memo cleanup
 mp.add_key_binding("y", "memo-cleanup", function(keep_n)
     local temp_path = history_path .. ".tmp"
