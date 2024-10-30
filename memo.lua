@@ -1899,3 +1899,39 @@ mp.add_key_binding("y", "memo-cleanup", function(keep_n)
     history:setvbuf("full")
     memo_clear()
 end)
+
+mp.add_key_binding("Y", "memo-pull-pldir", function()
+    -- Get all files in playlist directory
+    local dir = mp.command_native({"expand-path", options.playlist_path})
+    local files = mp.utils.readdir(dir)
+    
+    -- Read current history to check what files are already logged
+    local all_lines = read_lines(history_path)
+    local seen_paths = {}
+    
+    -- Build lookup table of paths already in history
+    if all_lines then
+       _, seen_paths = process_lines(all_lines, 0, options.ext)
+    end
+
+
+    -- Check each playlist file and log if not already in history
+    if files then
+        for _, file in ipairs(files) do
+            local full_path = mp.utils.join_path(dir, file)
+            local match = false
+            for _, path in ipairs(seen_paths) do
+                if path == full_path then 
+                    match = true
+                    break
+                end
+            end
+            if not match then
+                custom_write_history(false, full_path)
+            end
+        end
+    end
+    memo_clear()
+
+end)
+-- slapdash-end
