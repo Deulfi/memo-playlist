@@ -77,7 +77,11 @@ local options = {
     -- icon for the uosc button. Name of a material icon (look at uosc.conf for more info)
     icon="article",
     -- tooltip for the uosc button
-    tooltip="Playlist"
+    tooltip="Playlist",
+    -- keep_n=0 keep all memo entrys during memo-cleanup, keep_n=100 keep the last 100. 
+    -- Playlists (files ending with ext) will always be kept
+    -- All duplicates will be removed.
+    keep_n=0,
 }
 
 function parse_path_prefixes(path_prefixes)
@@ -1816,4 +1820,31 @@ mp.register_script_message('menu-event', function(json)
 
         mp.commandv('script-message-to', 'uosc', 'close-menu', 'menu_type')
     end
+end)
+
+-- Key binding function for memo cleanup
+mp.add_key_binding("y", "memo-cleanup", function(keep_n)
+    local temp_path = history_path .. ".tmp"
+    -- Read all lines from the history file
+    local all_lines = read_lines(history_path)
+    if not all_lines then return end
+
+    keep_n = tonumber(keep_n) or options.keep_n
+    -- Process the lines to keep the necessary ones
+    local lines = process_lines(all_lines, keep_n, options.ext)
+    -- Write the processed lines to a temporary file
+    write_lines(temp_path, lines)
+    -- Remove the original history file and rename the temp file to history file
+    os.remove(history_path)
+    os.rename(temp_path, history_path)
+
+    -- msg
+    mp.osd_message("History cleaned up: kept " .. #lines .. " entries", 3)
+    mp.msg.debug("History cleanup completed. Removed " .. (#all_lines - #lines) .. " entries")
+
+    -- Close and reopen history file to load modified data
+    history:close()
+    history = io.open(history_path, "a+b")
+    history:setvbuf("full")
+    memo_clear()
 end)
