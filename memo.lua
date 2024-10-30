@@ -82,6 +82,8 @@ local options = {
     -- Playlists (files ending with ext) will always be kept
     -- All duplicates will be removed.
     keep_n=0,
+    -- delete playlists from memo and filesystem
+    delte_pl_file = true
 }
 
 function parse_path_prefixes(path_prefixes)
