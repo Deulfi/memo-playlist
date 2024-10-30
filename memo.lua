@@ -475,6 +475,13 @@ function menu_json(menu_items, page)
         palette = palette, -- TODO: remove on next uosc release
         search_style = palette and "palette" or nil
     }
+    --slapdash
+    menu.item_actions = {
+        {name = 'add_to_playlist', icon = 'playlist_add', label = 'Add to playlist' .. ' (shift+enter/click)'},
+        {name = 'delete_memo_entry', icon = 'delete', label = 'Remove (del)'},
+    }
+    menu.callback = {mp.get_script_name(), 'menu-event'}
+    -- slapdash-end
 
     return menu
 end
@@ -1725,3 +1732,87 @@ mp.register_script_message('memo-save', save_playlist)
 mp.register_script_message('memo-save-as', input_save_playlist)
 mp.register_script_message("type_playlist_name:", memo_input)
 mp.register_event('shutdown', autosave)
+
+-- Handle events (Buttons) of uosc menu
+mp.register_script_message('menu-event', function(json)
+    -- get event in readable format
+    local event = mp.utils.parse_json(json)
+    local entry_to_delete = nil
+    mp.msg.debug('event: ' .. mp.utils.to_string(event))
+
+    local function delete_entry(path)
+        mp.msg.info('delete memo entry: ' .. path)
+        local temp_path = history_path .. ".tmp"
+
+        -- Safe file operation using with_file helper
+        local success = with_file(history_path, "r", function(input_file)
+            return with_file(temp_path, "w", function(temp_file)
+                for line in input_file:lines() do
+                    if not line:find(path, 1, true) then
+                        temp_file:write(line .. "\n")
+                    end
+                end
+                return true
+            end)
+        end)
+
+        if success then
+            os.remove(history_path)
+            os.rename(temp_path, history_path)
+            
+            -- close and open history to load changed data
+            history:close()
+            history = io.open(history_path, "a+b")
+            history:setvbuf("full")
+
+            -- Provide user feedback TODO: printing wrong path part
+            local a, b = mp.utils.split_path(path)
+            mp.osd_message(string.format("Deleted Memo entry: %s", b), 3)
+            
+            -- update menu
+            uosc_update()
+            -- open filtered menu if the deleted entry was a playlist
+            if path:match("%.[^%.]+$") == options.ext then
+                if options.delte_pl_file then
+                    os.remove(path)
+                end
+                custom_search()
+            end
+            show_history(options.entries, false, false, true, false)
+        else
+            mp.msg.error("Failed to delete entry")
+            mp.osd_message("Failed to delete entry", 3)
+        end
+    end
+
+    -- More explicit event type handling
+    if not event.type then
+        mp.msg.warn("Received event without type")
+        return
+    end
+
+    if event.type == 'activate' or event.type then
+        if event.action == 'delete_memo_entry' or event.key == 'del' then
+            entry_to_delete = event.key == 'del' 
+                and (event.selected_item and event.selected_item.value and event.selected_item.value[2])
+                or event.value[2]
+
+            if entry_to_delete then
+                delete_entry(entry_to_delete)
+            else 
+                mp.msg.error('No entry selected for deletion')
+                mp.osd_message('No entry selected for deletion', 3)
+            end
+        elseif event.action == 'add_to_playlist' or (event.modifiers == 'shift' and event.type == 'activate') then
+            local file = event.value[2]
+            local title = mp.get_property("filename", file)
+            mp.osd_message('Added to playlist: ' .. title, 3)
+            mp.commandv('loadfile', file, 'append')
+        else
+            mp.command_native(event.value)
+            memo_close()
+        end
+
+        mp.commandv('script-message-to', 'uosc', 'close-menu', 'menu_type')
+    end
+end)
