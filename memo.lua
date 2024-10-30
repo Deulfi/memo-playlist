@@ -55,6 +55,24 @@ local options = {
     --   lead to "Curb Your Enthusiasm" to be shown in the directory menu. Opening
     --   of that entry will then open that file again.
     path_prefixes = "pattern:.*"
+    --
+	-- playlist part
+	--
+    -- false for built-in input and true for user-input-module
+    use_input_module = true,
+	--enabel/disables the script from automatically saving the prev session
+    auto_save = true,
+
+    --runs the script automatically when started in idle mode and no files are in the playlist
+    auto_load = false,
+
+    --file path where playlists get saved.
+    --playlist_path = "~~state/watch_later/playlist/",   
+    playlist_path = "",
+    --maintain position in the playlist
+    load_position = false,
+	
+	ext = ".pls",	
 }
 
 function parse_path_prefixes(path_prefixes)
@@ -1437,3 +1455,268 @@ end)
 
 mp.register_event("file-loaded", file_load)
 mp.register_idle(idle)
+
+-- slapdash
+-- Helper function for safe file operations
+local function with_file(path, mode, func)
+    local file, err = io.open(path, mode)
+
+    if not file then 
+        mp.msg.error("Could not open file: " .. (err or "unknown error"))
+        return nil, err 
+    end
+
+    local success, result = pcall(func, file)
+
+    file:close()
+    if not success then
+        mp.msg.error("File operation failed: " .. result)
+        return nil, result
+    end
+
+    return result
+end
+
+local function create_directory_if_missing(path)
+    local dir = mp.command_native({ "expand-path", path })
+    local res = mp.utils.file_info(dir)
+
+    if not res then
+        mp.msg.error("Creating directory: " .. dir)
+        if package.config:sub(1,1) == "/" then
+            -- create the directory for linux
+            os.execute(string.format('mkdir -p "%s"', dir))
+        else
+            -- create the directory for windows
+            os.execute(string.format('mkdir "%s"', dir))
+        end
+    end
+end
+
+
+local from_input = nil
+local default_flag = false
+--# Adapted parts from [https://github.com/CogentRedTester/mpv-scripts/blob/master/keep-session.lua]
+--# Copyright (c) [2020] [Oscar Manglaras]
+--# MIT License
+
+--init----------------------------------------------------------------------------
+--sets the default session file to the watch_later directory or ~~state/watch_later/playlist
+if options.playlist_path == "" or options.playlist_path == "default" then
+    mp.msg.verbose("playlist_path is empty, using default")
+    local watch_later = mp.get_property('watch-later-directory', "")
+    if watch_later == "" then watch_later = "~~state/watch_later/playlist/" end
+    if not watch_later:find("[/\\]$") then watch_later = watch_later..'/' end
+
+    options.playlist_path = watch_later
+    default_flag = true
+end
+
+create_directory_if_missing(options.playlist_path)   
+
+-- button for uosc ribbon TODO: replace names with variables
+mp.commandv('script-message-to', 'uosc', 'set-button', 'Playlist', mp.utils.format_json({
+    icon = 'article',
+    active = false,
+    tooltip = 'Playlist',
+    command = 'script-binding memo-playlist',
+  }))
+
+if options.use_input_module then
+    package.path = mp.command_native({ "expand-path", "~~/script-modules/?.lua;" }) .. package.path
+    input = require "user-input-module"
+end
+--init-end----------------------------------------------------------------------------
+
+function custom_write_history(display, full_path)
+    --mp.msg[display and "info" or "debug"]("[memo] logging file " .. full_path)
+    local _, title = mp.utils.split_path(full_path)
+
+    mp.msg.debug("logging playlist " .. full_path)
+    if display then
+        mp.osd_message("[memo] logging playlist " .. full_path)
+    end
+
+    local entry = string.format("%d,%s,%s,%s",
+        os.time(),
+        #title > 0 and #title or "",
+        title,
+        full_path
+    )
+
+    history:seek("end")
+    history:write(string.format("%s,%d\n", entry, #entry))
+    history:flush()
+
+    if dyn_menu then dyn_menu_update() end
+end
+
+--saves the current playlist as a json string
+local function save_playlist(playlist_name)
+    if from_input and (uosc_available or options.using_uosc) then
+        -- renable timeline if it was disabled for writing pl name in input save
+        mp.commandv('script-message-to', 'uosc', 'disable-elements', mp.get_script_name(), '')
+        from_input = nil
+    end
+
+    if not playlist_name and not default_flag then
+        playlist_name = "Default"
+    end
+    
+    pl_full_path = mp.command_native({"expand-path", options.playlist_path.. playlist_name .. options.ext})
+
+    mp.msg.verbose('Saving Playlist to', pl_full_path)
+
+    local playlist = mp.get_property_native('playlist')
+
+    if #playlist == 0 then
+        mp.msg.debug('Playlist empty, aborting save')
+        return
+    end
+
+
+    local success, err = with_file(pl_full_path, "w", function(pls_file)
+        local working_directory = mp.get_property('working-directory')
+        local count = 0
+        pls_file:write("[playlist]\n" .. mp.get_property('playlist-pos') .. "\n")
+
+        for i, v in ipairs(playlist) do
+            count = i
+            mp.msg.debug('adding ' .. v.filename .. ' to playlist')
+
+            --if the file is available then it attempts to expand the path in-case of relative playlists
+            --presumably if the file contains a protocol then it shouldn't be expanded
+            if not v.filename:find("^%a*://") then
+                v.filename = mp.utils.join_path(working_directory, v.filename, options.ext)
+                mp.msg.debug('expanded path: ' .. v.filename)
+            end
+
+            pls_file:write("File".. count .."=" .. v.filename .. "\n")
+        end
+        pls_file:write("NumberOfEntries=".. count .. "\n" .. "Version=2\n")
+        return true
+    end)
+
+    if not success then
+        mp.msg.error("Failed to write to file " .. pl_full_path)
+        mp.msg.error(err)
+        return
+    end
+
+    custom_write_history(false, pl_full_path)
+end
+
+-- save playlist on mpv close
+local function autosave()
+    if options.auto_save then
+        save_playlist("last_session")
+    end
+end
+
+-- save playlist with custom name
+-- either via native input or with user-input-module
+local function input_save_playlist()
+    -- disable timeline/controls that overlaps input field in certain condition
+    if uosc_available then
+        mp.msg.debug(uosc_available)
+        mp.commandv('script-message-to', 'uosc', 'disable-elements', mp.get_script_name(), 'timeline,controls')
+        from_input = true
+    end
+
+    if options.use_input_module then
+        input.get_user_input(save_playlist,{request_text = "Savename for Playlist:"})	
+    else
+        mp.commandv("script-message-to", "console", "type", "script-message type_playlist_name: ")
+    end
+
+end
+
+--native input method modified from memo-search
+function memo_input(...)
+    mp.msg.verbose ("memo input function")
+    -- close REPL
+    mp.commandv("keypress", "ESC")
+
+    local words = {...}
+    if #words > 0 then
+        input_string = table.concat(words, " ")
+    else
+        mp.msg.verbose('Input string empty')
+    end
+    save_playlist(input_string)
+end
+
+-- either 
+local function load_playlist(name)
+    local file = mp.command_native({"expand-path", options.playlist_path..name.. options.ext})
+    if not file then
+        mp.msg.error("Could not expand path: " .. (file or "nil"))
+        return
+    end
+
+    -- Check if file exists and load playlist
+    local success = with_file(file, "r", function(f)
+        mp.commandv("loadlist", file, "replace")
+        mp.msg.verbose('Playlist loaded from: ' .. file)
+
+        if options.load_position then
+            -- Check playlist format and get position
+            local first_line = f:read()
+            if first_line ~= "[playlist]" then
+                mp.msg.verbose('File is not in correct format, cancelling load')
+                return false
+            end
+
+            local pos = f:read('*n')
+            if pos then
+                mp.msg.verbose("restoring playlist position", pos)
+                mp.set_property_number('playlist-start', pos)
+            end
+        end
+        return true
+    end)
+
+    if not success then
+        mp.msg.error("Failed to load playlist or position: " .. file)
+        mp.osd_message("Failed to load playlist or position: " .. file, 3)
+    end
+end
+
+-- autload last session
+if options.auto_load then
+    local playlist = mp.get_property_native('playlist')
+    -- only autoload if mpv was started in idle
+    if #playlist == 0 then
+        load_playlist("last_session")
+    end
+end
+
+function custom_search()
+    if event_loop_exhausted then return end
+    last_state = nil
+    -- show no duplicate for this menu
+    search_words = {options.ext}
+    local tmp_options = {
+        hide_duplicates = options.hide_duplicates,
+        pagination = options.pagination,
+        use_titles = options.use_titles
+    }
+    options.hide_duplicates = true
+    options.pagination = false 
+    options.use_titles = false 
+
+    show_history(options.entries,false,false,true,false)
+    search_words = nil
+    options.use_titles = tmp_options.use_titles
+    options.pagination = tmp_options.pagination
+    options.hide_duplicates = tmp_options.hide_duplicates
+
+end
+
+-- shows normal history but filtered for the extention (.pls)
+mp.add_key_binding("g", "memo-playlist", custom_search)
+mp.register_script_message('memo-load', load_playlist)
+mp.register_script_message('memo-save', save_playlist)
+mp.register_script_message('memo-save-as', input_save_playlist)
+mp.register_script_message("type_playlist_name:", memo_input)
+mp.register_event('shutdown', autosave)
