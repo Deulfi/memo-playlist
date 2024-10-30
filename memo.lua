@@ -72,7 +72,12 @@ local options = {
     --maintain position in the playlist
     load_position = false,
 	
-	ext = ".pls",	
+    ext = ".pls",	
+
+    -- icon for the uosc button. Name of a material icon (look at uosc.conf for more info)
+    icon="article",
+    -- tooltip for the uosc button
+    tooltip="Playlist"
 }
 
 function parse_path_prefixes(path_prefixes)
@@ -1515,10 +1520,10 @@ end
 create_directory_if_missing(options.playlist_path)   
 
 -- button for uosc ribbon TODO: replace names with variables
-mp.commandv('script-message-to', 'uosc', 'set-button', 'Playlist', mp.utils.format_json({
-    icon = 'article',
+mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils.format_json({
+    icon = options.icon,
     active = false,
-    tooltip = 'Playlist',
+    tooltip = options.tooltip,
     command = 'script-binding memo-playlist',
   }))
 
