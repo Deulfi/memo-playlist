@@ -1,10 +1,105 @@
-# memo
-A recent files menu for mpv.
+# memo + playlist
+A recent files menu for mpv with some playlist features slapped on top.
 
-This script saves your watch history, and displays it in a nice menu.
+This script saves your watch history + playlists, and displays it in a nice menu.
 
 ![Preview](https://user-images.githubusercontent.com/42466980/236659593-59d6b517-c560-4a2f-b30c-cb8daf7050e2.png)
 
+This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist saving functionality while maintaining all original code.
+
+## New Features
+- Save current playlist as .pls file (compatible with most media players)
+- Configurable save location and file extension via memo.conf
+- Playlist management menu (default keybind: g)
+- UOSC buttons for the memo and playlist menus
+- Method to clean memo.log up a bit
+
+## Notice
+Only tested on Windows and with UOSC. Vanilla menus should work fine, since I didn't mess with it, but no guarantees.
+
+## Installation
+
+### Basic Installation
+Place **memo.lua** in your mpv `scripts` folder.  
+Default settings are listed in **memo.conf**, copy it to your mpv `script-opts` folder to customize.
+
+### Optional Dependencies
+#### Enhanced Input Method
+For a better input experience when naming playlists, you can:
+- Install [user-input](https://github.com/CogentRedTester/mpv-user-input) module
+- Set `use_user_input=yes` in memo.conf to enable it
+- If you don't want the user-input module, set it to 'no' in memo.conf for a native input method.
+
+## Custom keybinds
+1 keybind is provided for use in `input.conf`.  
+Example usage: `g script-binding memo-playlist`
+
+`memo-playlist`  
+Brings up the playlist files menu, or closes it if already open. Default key is **g**.
+
+## Script messages
+Just like the keybinding above, script messages can also be bound to keys in `input.conf`.  
+Example usage: `G script-message memo-save SomePlaylistName`
+
+`memo-save`  
+Saves the current playlist, as default if no name is specified.
+
+`memo-save-as`  
+Saves the current playlist with a custom name, opens input method (native or user-input) to enter the name.
+
+`memo-load`  
+Loads the specified playlist, or default if none is specified.
+
+`memo-cleanup`  
+Cleans up the file memo uses:
+- Deduplicates memo.log
+- Keeps only the last n  memo entries (does not delete unique playlists, n=0 keeps all unique entries)
+
+`memo-pull-pldir`  
+Goes through the playlist directory and pulls all playlists into the memo. Useful if you want to add playlist frome outside.
+
+## uosc menus and buttons
+Adding a menu: append ` #! Playlist` to your `input.conf` keybind, or use this for a menu-only config.
+```
+# script-binding memo-playlist #! Playlist
+```
+
+Adding a button above timeline: add `button:memo-playlist` to your **uosc.conf** `controls` option. The button can be customized in **memo.conf**.
+
+## Configuration
+All further configuration, like the default directory, is done in `script-opts/memo.conf`.  
+A file with all default options and their descriptions is included in the repo.
+
+
+## Menu Example
+You can add these lines to your `input.conf`:
+
+```conf
+g                   script-binding memo-playlist
+#                                                                                                        #! Playlist > Playlist Management
+ctrl+s				script-message-to memo memo-save ;show-text "Saved playlist" 3000				     #! Playlist > Save
+#					script-message-to memo memo-load					                                 #! Playlist > Load
+ctrl+S				script-message-to memo memo-save-as ;show-text "Input Save" 3000					 #! Playlist > Save as
+#                   script-message-to memo memo-save Internet								    	   	 #! Playlist > Internet > Save
+#                   script-message-to memo memo-load Internet								    	   	 #! Playlist > Internet > Load
+#                   script-message-to memo memo-save Music										       	 #! Playlist > Music > Save
+#                   script-message-to memo memo-load Music										       	 #! Playlist > Music > Load
+#					script-message-to memo memo-cleanup 							       	             #! Playlist > Other > Deduplicate
+y                   script-message-to memo memo-cleanup 100                                              #! Playlist > Other > Cleanup
+Y                   script-message-to memo memo-pull-pldir                                               #! Playlist > Other > Repopulate
+#					playlist-clear																       	 #! Playlist > Other > Clear
+
+
+# Acknowledgments
+- Original script [memo](https://github.com/po5/memo) by po5, which serves as the foundation for this fork
+- Parts of the playlist functionality are adapted from [keep-session.lua](https://github.com/CogentRedTester/mpv-scripts/blob/master/keep-session.lua) by CogentRedTester, modified to fit the needs of this project
+
+Many thanks to the original authors for their excellent work that made this fork possible.
+
+## License
+This project maintains the same license as the original memo script. See the LICENSE file for details.
+
+## Original Documentation
 ## Installation
 Place **memo.lua** in your mpv `scripts` folder.  
 Default settings are listed in **memo.conf**, copy it to your mpv `script-opts` folder to customize.
