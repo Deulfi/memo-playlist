@@ -1,7 +1,7 @@
 # memo + playlist
 A recent files menu for mpv with some playlist features slapped on top.
 
-This script saves your watch history + playlists, and displays it in a nice menu.
+This script saves your watch history + rudimentary playlists, and displays it in a nice menu.
 
 ![Preview](https://user-images.githubusercontent.com/42466980/236659593-59d6b517-c560-4a2f-b30c-cb8daf7050e2.png)
 
@@ -15,7 +15,8 @@ This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist sa
 - Method to clean memo.log up a bit
 
 ## Notice
-Only tested on Windows and with UOSC. Vanilla menus should work fine, since I didn't mess with it, but no guarantees.
+- Only tested on Windows and with UOSC. Vanilla menus should work fine, since I didn't mess with it, but no guarantees.
+- It's quite rudimentary, don't expect a well done playlist management system. It's more like a 'Oh, shoot. I want to quickly save this for later'
 
 ## Installation
 
@@ -28,10 +29,10 @@ Default settings are listed in **memo.conf**, copy it to your mpv `script-opts` 
 For a better input experience when naming playlists, you can:
 - Install [user-input](https://github.com/CogentRedTester/mpv-user-input) module
 - Set `use_user_input=yes` in memo.conf to enable it
-- If you don't want the user-input module, set it to 'no' in memo.conf for a native input method.
+- If you don't want the user-input module, leave the flag at 'no' in memo.conf for a native input method. (the console output is normal)
 
 ## Custom keybinds
-1 keybind is provided for use in `input.conf`.  
+One keybind is provided for use in `input.conf`.  
 Example usage: `g script-binding memo-playlist`
 
 `memo-playlist`  
@@ -56,7 +57,7 @@ Cleans up the file memo uses:
 - Keeps only the last n  memo entries (does not delete unique playlists, n=0 keeps all unique entries)
 
 `memo-pull-pldir`  
-Goes through the playlist directory and pulls all playlists into the memo. Useful if you want to add playlist frome outside.
+Goes through the playlist directory and pulls all playlists files into the memo history. Useful if you want to add external playlists or they are not in memo for some reason.
 
 ## uosc menus and buttons
 Adding a menu: append ` #! Playlist` to your `input.conf` keybind, or use this for a menu-only config.
@@ -88,7 +89,7 @@ ctrl+S				script-message-to memo memo-save-as ;show-text "Input Save" 3000					 
 y                   script-message-to memo memo-cleanup 100                                              #! Playlist > Other > Cleanup
 Y                   script-message-to memo memo-pull-pldir                                               #! Playlist > Other > Repopulate
 #					playlist-clear																       	 #! Playlist > Other > Clear
-
+```
 
 # Acknowledgments
 - Original script [memo](https://github.com/po5/memo) by po5, which serves as the foundation for this fork
