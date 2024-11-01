@@ -77,18 +77,18 @@ You can add these lines to your `input.conf`:
 
 ```conf
 g       script-binding memo-playlist
-#                                                                         #! Playlist > Playlist Management
-ctrl+s  script-message-to memo memo-save ;show-text "Saved playlist" 3000 #! Playlist > Save
-#       script-message-to memo memo-load                                  #! Playlist > Load
-ctrl+S  script-message-to memo memo-save-as ;show-text "Input Save" 3000  #! Playlist > Save as
-#       script-message-to memo memo-save Internet                         #! Playlist > Internet > Save
-#       script-message-to memo memo-load Internet                         #! Playlist > Internet > Load
-#       script-message-to memo memo-save Music                            #! Playlist > Music > Save
-#       script-message-to memo memo-load Music                            #! Playlist > Music > Load
-#       script-message-to memo memo-cleanup                               #! Playlist > Other > Deduplicate
-y       script-message-to memo memo-cleanup 100                           #! Playlist > Other > Cleanup
-Y       script-message-to memo memo-pull-pldir                            #! Playlist > Other > Repopulate
-#	    playlist-clear                                                    #! Playlist > Other > Clear
+#                                                                           #! Playlist > Playlist Management
+ctrl+s  script-message-to memo memo-save ;show-text "Saved playlist" 3000   #! Playlist > Save
+#       script-message-to memo memo-load                                    #! Playlist > Load
+ctrl+S  script-message-to memo memo-save-as ;show-text "Input Save" 3000    #! Playlist > Save as
+#       script-message-to memo memo-save Internet                           #! Playlist > Internet > Save
+#       script-message-to memo memo-load Internet                           #! Playlist > Internet > Load
+#       script-message-to memo memo-save Music                              #! Playlist > Music > Save
+#       script-message-to memo memo-load Music                              #! Playlist > Music > Load
+#       script-message-to memo memo-cleanup                                 #! Playlist > Other > Deduplicate
+y       script-message-to memo memo-cleanup 100                             #! Playlist > Other > Cleanup
+Y       script-message-to memo memo-pull-pldir                              #! Playlist > Other > Repopulate
+#       playlist-clear                                                      #! Playlist > Other > Clear
 ```
 
 # Acknowledgments
