@@ -1532,12 +1532,8 @@ local default_flag = false
 --init----------------------------------------------------------------------------
 --sets the default session file to the watch_later directory or ~~state/watch_later/playlist
 if options.playlist_path == "" or options.playlist_path == "default" then
-    mp.msg.verbose("playlist_path is empty, using default")
-    local watch_later = mp.get_property('watch-later-directory', "")
-    if watch_later == "" then watch_later = "~~state/watch_later/playlist/" end
-    if not watch_later:find("[/\\]$") then watch_later = watch_later..'/' end
-
-    options.playlist_path = watch_later
+    mp.msg.verbose("playlist_path not put, using default")
+    options.playlist_path = "~~state/watch_later/playlist/"
     default_flag = true
 end
 
@@ -1553,7 +1549,7 @@ mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils
 
 if options.use_input_module then
     package.path = mp.command_native({ "expand-path", "~~/script-modules/?.lua;" }) .. package.path
-    input = require "user-input-module"
+    input_module = require "user-input-module"
 end
 --init-end----------------------------------------------------------------------------
 
@@ -1586,7 +1582,13 @@ local function save_playlist(playlist_name, playlist_full_path)
         -- renable timeline if it was disabled for writing pl name in input save
         mp.commandv('script-message-to', 'uosc', 'disable-elements', mp.get_script_name(), '')
         from_input = nil
+        print("from input")
+        print(playlist_name)
+        print(playlist_full_path)
     end
+    print("from not input")
+    print(playlist_name)
+    print(playlist_full_path)
 
     --if not playlist_name and not default_flag then
     if not playlist_name then
@@ -1594,8 +1596,21 @@ local function save_playlist(playlist_name, playlist_full_path)
     end
     
     if not playlist_full_path then
-        playlist_full_path = mp.command_native({"expand-path", options.playlist_path.. playlist_name .. options.ext})
+        mp.msg.debug("Only name found, creating full path with: ", playlist_name)
+        if playlist_name:find(options.ext, -#options.ext) then
+            mp.msg.debug("Name with ext found, only adding path: " .. options.ext)
+            playlist_full_path = options.playlist_path .. playlist_name .. options.ext
+        else
+            playlist_full_path = options.playlist_path.. playlist_name .. options.ext
+        end
+        
+    else
+        mp.msg.debug("playlist_full_path found: ", playlist_full_path)
     end
+    -- normalize-path is bugged, so we use expand-path and normalize-path
+    playlist_full_path = mp.command_native({"expand-path", playlist_full_path})
+    playlist_full_path = normalize(playlist_full_path)
+
 
     mp.msg.verbose('Saving Playlist to', playlist_full_path)
 
@@ -1656,7 +1671,7 @@ local function input_save_playlist()
     end
 
     if options.use_input_module then
-        input.get_user_input(save_playlist,{request_text = "Savename for Playlist:"})	
+        input_module.get_user_input(save_playlist,{request_text = "Savename for Playlist:"})	
     else
         mp.commandv("script-message-to", "console", "type", "script-message type_playlist_name: ")
     end
@@ -1760,6 +1775,7 @@ mp.register_script_message("type_playlist_name:", memo_input)
 mp.register_event('shutdown', autosave)
 
 -- Handle events (Buttons) of uosc menu
+-- TODO: filter for action text
 mp.register_script_message('menu-event', function(json)
     -- get event in readable format
     local event = mp.utils.parse_json(json)
@@ -1882,6 +1898,12 @@ local function process_lines(lines, keep_n, ext)
 
     for i = #lines, 1, -1 do
         local line = lines[i]
+
+        if line == nil then
+            mp.msg.debug("Aborting found empty line. Check memo.log")
+            break
+        end
+
         -- Extract the path from the line
         local path = line:match("[^,]*,[^,]*,[^,]*,([^,]*),")
         -- fix issue with case-sensitive checks TODO: why are some paths uppercased?
@@ -1891,8 +1913,8 @@ local function process_lines(lines, keep_n, ext)
 
 
             if path:match("%.[^%.]+$") == options.ext then
-                mp.msg.debug(seen_paths[path])
-                mp.msg.debug('adding ' .. path)
+                --mp.msg.debug(seen_paths[path])
+                mp.msg.debug('[process_lines] found: ' .. path)
                 table.insert(processed_lines, 1, line)
                  -- Track playlists separately
                 table.insert(processed_playlists, 1, path)
@@ -1936,8 +1958,9 @@ end)
 mp.register_script_message("memo-pull-pldir", function()
     -- Get all files in playlist directory
     local dir = mp.command_native({"expand-path", options.playlist_path})
-    local files = mp.utils.readdir(dir)
-    
+    local files = mp.utils.readdir(dir,'files')
+  
+    mp.msg.debug("Trying to populate playlist from dir: " .. dir)
     -- Read current history to check what files are already logged
     local all_lines = read_lines(history_path)
     local seen_paths = {}
@@ -1952,6 +1975,7 @@ mp.register_script_message("memo-pull-pldir", function()
     if files then
         for _, file in ipairs(files) do
             local full_path = mp.utils.join_path(dir, file)
+            full_path = normalize(full_path)
             local match = false
             for _, path in ipairs(seen_paths) do
                 if path == full_path then 
@@ -1969,3 +1993,7 @@ mp.register_script_message("memo-pull-pldir", function()
 end)
 -- slapdash-end
 --Todo: pull menu stuff down
+--mp.utils.append_file(fname, str)
+-- TODO: https://mpv.io/manual/stable/#command-interface-stream-pos or https://mpv.io/manual/stable/#command-interface-time-pos
+-- TODO: 
+-- TODO: 
