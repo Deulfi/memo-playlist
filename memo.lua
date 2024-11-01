@@ -1260,6 +1260,7 @@ mp.register_script_message("uosc-version", function(version)
 
     local min_version = "5.0.0"
     uosc_available = not semver_comp(version, min_version)
+    --uosc_available = false
 end)
 
 mp.register_script_message("menu-ready", function(client_name)
@@ -1596,6 +1597,44 @@ local function get_playlists()
     return files, seen_paths
 end
 
+local function delete_entry(path)
+    mp.msg.info('delete memo entry: ' .. path)
+    local temp_path = history_path .. ".tmp"
+
+    -- Safe file operation using with_file helper
+    local success = with_file(history_path, "r", function(memo_history)
+        return with_file(temp_path, "w", function(temp_file)
+            for line in memo_history:lines() do
+                if not line:find(path, 1, true) then
+                    temp_file:write(line .. "\n")
+                end
+            end
+            return true
+        end)
+    end)
+
+    if success then
+        os.remove(history_path)
+        os.rename(temp_path, history_path)
+        
+        -- close and open history to load changed data
+        history:close()
+        history = io.open(history_path, "a+b")
+        history:setvbuf("full")
+
+        -- Provide user feedback TODO: printing wrong path part
+        local a, b = mp.utils.split_path(path)
+        mp.osd_message(string.format("Deleted Memo entry: %s", b), 3)
+        
+        return true
+        
+    else
+        mp.msg.error("Failed to delete entry")
+        mp.osd_message("Failed to delete entry", 3)
+        return false
+    end
+end
+
 if options.show_save then
     options.show_save = nil
 end
@@ -1676,7 +1715,7 @@ local function save_playlist(playlist_name, playlist_full_path)
 
 
     mp.msg.verbose('Saving Playlist to', playlist_full_path)
-    mp.osd_message("Saved Playlist: " .. playlist_name, 3)
+    mp.osd_message("Saved Playlist as: " .. playlist_name, 3)
 
     local playlist = mp.get_property_native('playlist')
 
@@ -1726,7 +1765,12 @@ end
 
 
 --native input method modified from memo-search
-function input_save_playlist()
+function input_action(action)
+    --local action = "delete"
+    if not action then
+        mp.msg.error("No action specified")
+        return
+    end
     mp.msg.verbose ("memo input function")
 
     if uosc_available then
@@ -1747,13 +1791,26 @@ function input_save_playlist()
         playlist_name = input_string
     end,
     submit = function (input_string)
+        print("in submit: ", action, submitted)
         mp.msg.debug("pl_title[id]: ",pl_title[input_string])
         playlist_name = pl_title[input_string]
+        if action == "delete" then
+            delete_entry(playlist_name)
+            if options.delte_pl_file then
+                local pl_path = mp.utils.join_path(options.playlist_path, playlist_name)
+                pl_path = mp.command_native({"expand-path", pl_path})
+                pl_path = normalize(pl_path)
+                os.remove(pl_path)
+            end
+        end
     end,
     closed = function ()
         -- input.select does ignores submit if input_string is not in items.
         -- so we just do it here
-        save_playlist(playlist_name)
+        -- TODO: catch esc key press
+        if action == "save" then
+            save_playlist(playlist_name)
+        end
 
         mp.msg.debug("closed input")
         if uosc_available then
@@ -1809,7 +1866,11 @@ if options.auto_load then
     end
 end
 
-function custom_search()
+-- todo: memo_search_uosc
+function custom_search(indirect)
+    if not indirect then
+        memo_close()
+    end
     if event_loop_exhausted then return end
     last_state = nil
     -- show no duplicate for this menu
@@ -1829,6 +1890,8 @@ function custom_search()
 
     show_history(options.entries,false,false,true,false)
 
+    --memo_search_uosc(options.ext)
+
     if options.show_save then options.show_save = nil end
     search_words = nil
     options.use_titles = tmp_options.use_titles
@@ -1839,63 +1902,18 @@ function custom_search()
 end
 
 -- shows normal history but filtered for the extention (.pls)
-mp.add_key_binding("g", "memo-playlist", custom_search)
+mp.add_key_binding('g', 'memo-playlist', custom_search)
 mp.register_script_message('memo-load', load_playlist)
 mp.register_script_message('memo-save', save_playlist)
-mp.register_script_message('memo-save-as', input_save_playlist)
+mp.register_script_message('memo-action', input_action)
 mp.register_event('shutdown', autosave)
 
 -- Handle events (Buttons) of uosc menu
 mp.register_script_message('menu-event', function(json)
     -- get event in readable format
     local event = mp.utils.parse_json(json)
-    local entry_to_delete = nil
+    local path_to_delete = nil
     mp.msg.debug('event: ' .. mp.utils.to_string(event))
-
-    local function delete_entry(path)
-        mp.msg.info('delete memo entry: ' .. path)
-        local temp_path = history_path .. ".tmp"
-
-        -- Safe file operation using with_file helper
-        local success = with_file(history_path, "r", function(memo_history)
-            return with_file(temp_path, "w", function(temp_file)
-                for line in memo_history:lines() do
-                    if not line:find(path, 1, true) then
-                        temp_file:write(line .. "\n")
-                    end
-                end
-                return true
-            end)
-        end)
-
-        if success then
-            os.remove(history_path)
-            os.rename(temp_path, history_path)
-            
-            -- close and open history to load changed data
-            history:close()
-            history = io.open(history_path, "a+b")
-            history:setvbuf("full")
-
-            -- Provide user feedback TODO: printing wrong path part
-            local a, b = mp.utils.split_path(path)
-            mp.osd_message(string.format("Deleted Memo entry: %s", b), 3)
-            
-            -- update menu
-            uosc_update()
-            -- open filtered menu if the deleted entry was a playlist
-            if path:match("%.[^%.]+$") == options.ext then
-                if options.delte_pl_file then
-                    os.remove(path)
-                end
-                custom_search()
-            end
-            show_history(options.entries, false, false, true, false)
-        else
-            mp.msg.error("Failed to delete entry")
-            mp.osd_message("Failed to delete entry", 3)
-        end
-    end
 
     -- More explicit event type handling
     if not event.type then
@@ -1906,12 +1924,24 @@ mp.register_script_message('menu-event', function(json)
     if event.type == 'activate' or event.type then
         -- delete entry
         if event.action == 'delete_memo_entry' or event.key == 'del' then
-            entry_to_delete = event.key == 'del' 
+            path_to_delete = event.key == 'del' 
                 and (event.selected_item and event.selected_item.value and event.selected_item.value[2])
                 or event.value[2]
 
-            if entry_to_delete then
-                delete_entry(entry_to_delete)
+            if path_to_delete then
+                local result = delete_entry(path_to_delete)
+
+                if result then     -- update menu
+                    uosc_update()
+                    -- open filtered menu if the deleted entry was a playlist
+                    if path_to_delete:match("%.[^%.]+$") == options.ext then
+                        if options.delte_pl_file then
+                            os.remove(path_to_delete)
+                        end
+                        custom_search(true)
+                    end
+                    show_history(options.entries, false, false, true, false)
+                end
             else 
                 mp.msg.error('No entry selected for deletion')
                 mp.osd_message('No entry selected for deletion', 3)
@@ -1966,6 +1996,7 @@ end)
 
 mp.register_script_message("memo-pull-pldir", function()
     -- Get all files in playlist directory
+    local dir = mp.command_native({"expand-path", options.playlist_path})
     local files, seen_paths = get_playlists()
 
     -- Check each playlist file and log if not already in history
@@ -1985,12 +2016,10 @@ mp.register_script_message("memo-pull-pldir", function()
             end
         end
     end
-    --memo_clear()
-
 end)
 -- slapdash-end
 --Todo: pull menu stuff down
 --mp.utils.append_file(fname, str)
 -- TODO: https://mpv.io/manual/stable/#command-interface-stream-pos or https://mpv.io/manual/stable/#command-interface-time-pos
--- TODO: 
--- TODO: 
+-- TODO: playlist uppercase after protocol youtube?
+-- TODO: function for the expand and normalize stuff

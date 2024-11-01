@@ -5,7 +5,7 @@ This script saves your watch history + rudimentary playlists, and displays it in
 
 ![Preview](https://user-images.githubusercontent.com/42466980/236659593-59d6b517-c560-4a2f-b30c-cb8daf7050e2.png)
 
-This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist saving functionality while maintaining the original code.
+This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist saving functionality while no touching the original code (much).
 
 ## New Features
 - Save current playlist as .pls file (compatible with most media players)
@@ -37,7 +37,7 @@ Example usage: `G script-message memo-save SomePlaylistName`
 Saves the current playlist, as default if no name is specified.
 
 `memo-save-as`  
-Saves the current playlist with a custom name, opens input method (native or user-input) to enter the name.
+Saves the current playlist with a custom name, opens input method of MPV to enter the name or selecting from previous playlists.
 
 `memo-load`  
 Loads the specified playlist, or default if none is specified.
