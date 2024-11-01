@@ -58,8 +58,6 @@ local options = {
     --
 	-- playlist part
 	--
-    -- false for built-in input and true for user-input-module
-    use_input_module = true,
 	--enabel/disables the script from automatically saving the prev session
     auto_save = true,
 
@@ -81,7 +79,7 @@ local options = {
     -- keep_n=0 keep all memo entrys during memo-cleanup, keep_n=100 keep the last 100. 
     -- Playlists (files ending with ext) will always be kept
     -- All duplicates will be removed.
-    keep_n=0,
+    keep_n = 0,
     -- delete playlists from memo and filesystem
     delte_pl_file = true,
 
@@ -90,7 +88,6 @@ local options = {
     show_delete = true,
     show_save = true,
 }
-local tmp_show_save = nil
 
 function parse_path_prefixes(path_prefixes)
     local patterns = {}
@@ -494,7 +491,7 @@ function menu_json(menu_items, page)
     local save = {name = 'save_playlist', icon = 'save', label = 'Save playlist' .. ' (alt+enter/click)'}
 
     if options.show_append then menu.item_actions[#menu.item_actions+1] = add_to_playlist end
-    if tmp_show_save then menu.item_actions[#menu.item_actions+1] = save end
+    if options.show_save then menu.item_actions[#menu.item_actions+1] = save end
     if options.show_delete then menu.item_actions[#menu.item_actions+1] =delete end
    
     menu.callback = {mp.get_script_name(), 'menu-event'}
@@ -1522,8 +1519,87 @@ local function create_directory_if_missing(path)
     end
 end
 
+-- Function to read all lines from a file
+local function read_lines(file_path)
+    local lines = {}
+    local result = with_file(file_path, "r", function(file)
+        for line in file:lines() do
+            table.insert(lines, line)
+        end
+        return lines
+    end)
+    return result
+end
 
-local from_input = nil
+-- Function to write lines to a file 
+local function write_lines(file_path, lines)
+    return with_file(file_path, "w", function(file)
+        for _, line in ipairs(lines) do
+            file:write(line, "\n")
+        end
+        return true
+    end)
+end
+
+-- Function to process lines and keep the last N items
+local function process_lines(lines, keep_n, ext)
+    local seen_paths = {}
+    local processed_lines = {}
+    local processed_playlists = {}
+    -- Iterate over lines in reverse order
+
+    for i = #lines, 1, -1 do
+        local line = lines[i]
+
+        if line == nil then
+            mp.msg.debug("Aborting found empty line. Check memo.log")
+            break
+        end
+
+        -- Extract the path from the line
+        local path = line:match("[^,]*,[^,]*,[^,]*,([^,]*),")
+        -- fix issue with case-sensitive checks TODO: why are some paths uppercased?
+        local lower_path = path:lower()
+        if path and not seen_paths[lower_path] then
+            seen_paths[lower_path] = true
+
+
+            if path:match("%.[^%.]+$") == options.ext then
+                --mp.msg.debug(seen_paths[path])
+                mp.msg.debug('[process_lines] found: ' .. path)
+                table.insert(processed_lines, 1, line)
+                 -- Track playlists separately
+                table.insert(processed_playlists, 1, path)
+            
+            -- Keep lines that match any of these conditions: is below limit, is unique
+            elseif (keep_n == 0) or (#processed_lines < keep_n) then
+                table.insert(processed_lines, 1, line)
+            end
+        end
+    end
+    return processed_lines, processed_playlists
+end
+
+local function get_playlists()
+    local dir = mp.command_native({"expand-path", options.playlist_path})
+    local files = mp.utils.readdir(dir,'files')
+  
+    mp.msg.debug("Processing playlists from dir: " .. dir)
+    -- Read current history to check what files are already logged
+    local all_lines = read_lines(history_path)
+    local seen_paths = {}
+    
+    -- Build lookup table of paths already in history
+    if all_lines then
+       _, seen_paths = process_lines(all_lines, 0, options.ext)
+    end
+    return files, seen_paths
+end
+
+if options.show_save then
+    options.show_save = nil
+end
+
 local default_flag = false
 --# Adapted parts from [https://github.com/CogentRedTester/mpv-scripts/blob/master/keep-session.lua]
 --# Copyright (c) [2020] [Oscar Manglaras]
@@ -1547,10 +1623,6 @@ mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils
     command = 'script-binding memo-playlist',
   }))
 
-if options.use_input_module then
-    package.path = mp.command_native({ "expand-path", "~~/script-modules/?.lua;" }) .. package.path
-    input_module = require "user-input-module"
-end
 --init-end----------------------------------------------------------------------------
 
 function custom_write_history(display, full_path)
@@ -1578,41 +1650,33 @@ end
 
 --saves the current playlist as a json string
 local function save_playlist(playlist_name, playlist_full_path)
-    if from_input and (uosc_available or options.using_uosc) then
-        -- renable timeline if it was disabled for writing pl name in input save
-        mp.commandv('script-message-to', 'uosc', 'disable-elements', mp.get_script_name(), '')
-        from_input = nil
-        print("from input")
-        print(playlist_name)
-        print(playlist_full_path)
-    end
-    print("from not input")
-    print(playlist_name)
-    print(playlist_full_path)
 
     --if not playlist_name and not default_flag then
     if not playlist_name then
-        playlist_name = "Default"
+        playlist_name = "default"
     end
     
     if not playlist_full_path then
         mp.msg.debug("Only name found, creating full path with: ", playlist_name)
         if playlist_name:find(options.ext, -#options.ext) then
-            mp.msg.debug("Name with ext found, only adding path: " .. options.ext)
-            playlist_full_path = options.playlist_path .. playlist_name .. options.ext
+            mp.msg.debug("Name with ext found, only adding path")
+            playlist_full_path = mp.utils.join_path(options.playlist_path, playlist_name)
         else
-            playlist_full_path = options.playlist_path.. playlist_name .. options.ext
+            playlist_name = playlist_name .. options.ext
+            playlist_full_path = mp.utils.join_path(options.playlist_path, playlist_name)
         end
         
     else
         mp.msg.debug("playlist_full_path found: ", playlist_full_path)
+        _, playlist_name = mp.utils.split_path(playlist_full_path)
     end
-    -- normalize-path is bugged, so we use expand-path and normalize-path
+
     playlist_full_path = mp.command_native({"expand-path", playlist_full_path})
     playlist_full_path = normalize(playlist_full_path)
 
 
     mp.msg.verbose('Saving Playlist to', playlist_full_path)
+    mp.osd_message("Saved Playlist: " .. playlist_name, 3)
 
     local playlist = mp.get_property_native('playlist')
 
@@ -1660,37 +1724,44 @@ local function autosave()
     end
 end
 
--- save playlist with custom name
--- either via native input or with user-input-module
-local function input_save_playlist()
-    -- disable timeline/controls that overlaps input field in certain condition
-    if uosc_available then
-        mp.msg.debug(uosc_available)
-        mp.commandv('script-message-to', 'uosc', 'disable-elements', mp.get_script_name(), 'timeline,controls')
-        from_input = true
-    end
-
-    if options.use_input_module then
-        input_module.get_user_input(save_playlist,{request_text = "Savename for Playlist:"})	
-    else
-        mp.commandv("script-message-to", "console", "type", "script-message type_playlist_name: ")
-    end
-
-end
 
 --native input method modified from memo-search
-function memo_input(...)
+function input_save_playlist()
     mp.msg.verbose ("memo input function")
-    -- close REPL
-    mp.commandv("keypress", "ESC")
 
-    local words = {...}
-    if #words > 0 then
-        input_string = table.concat(words, " ")
-    else
-        mp.msg.verbose('Input string empty')
+    if uosc_available then
+        mp.msg.debug(uosc_available)
+        mp.commandv('script-message-to', 'uosc', 'disable-elements', mp.get_script_name(), 'controls')
     end
-    save_playlist(input_string)
+
+    local pl_title, _ = get_playlists()
+    local input_string = "default"
+    local input = require 'mp.input'
+    local playlist_name = "default"
+
+
+   input.select({
+    prompt = "Enter playlist name: ",
+    items = pl_title,
+    edited = function (input_string)
+        playlist_name = input_string
+    end,
+    submit = function (input_string)
+        mp.msg.debug("pl_title[id]: ",pl_title[input_string])
+        playlist_name = pl_title[input_string]
+    end,
+    closed = function ()
+        -- input.select does ignores submit if input_string is not in items.
+        -- so we just do it here
+        save_playlist(playlist_name)
+
+        mp.msg.debug("closed input")
+        if uosc_available then
+            mp.commandv('script-message-to', 'uosc', 'disable-elements', mp.get_script_name(), '')
+        end
+    end,
+    })
+    
 end
 
 -- either 
@@ -1753,11 +1824,12 @@ function custom_search()
     options.pagination = false 
     options.use_titles = false 
     options.hide_same_dir = false
-    tmp_show_save = true
+    -- save should never show up in normal history menu. 
+    if options.show_save == nil then options.show_save = true end
 
-    show_history(options.entries,false,false,false,false)
+    show_history(options.entries,false,false,true,false)
 
-    tmp_show_save = false
+    if options.show_save then options.show_save = nil end
     search_words = nil
     options.use_titles = tmp_options.use_titles
     options.pagination = tmp_options.pagination
@@ -1771,11 +1843,9 @@ mp.add_key_binding("g", "memo-playlist", custom_search)
 mp.register_script_message('memo-load', load_playlist)
 mp.register_script_message('memo-save', save_playlist)
 mp.register_script_message('memo-save-as', input_save_playlist)
-mp.register_script_message("type_playlist_name:", memo_input)
 mp.register_event('shutdown', autosave)
 
 -- Handle events (Buttons) of uosc menu
--- TODO: filter for action text
 mp.register_script_message('menu-event', function(json)
     -- get event in readable format
     local event = mp.utils.parse_json(json)
@@ -1787,9 +1857,9 @@ mp.register_script_message('menu-event', function(json)
         local temp_path = history_path .. ".tmp"
 
         -- Safe file operation using with_file helper
-        local success = with_file(history_path, "r", function(input_file)
+        local success = with_file(history_path, "r", function(memo_history)
             return with_file(temp_path, "w", function(temp_file)
-                for line in input_file:lines() do
+                for line in memo_history:lines() do
                     if not line:find(path, 1, true) then
                         temp_file:write(line .. "\n")
                     end
@@ -1867,67 +1937,6 @@ mp.register_script_message('menu-event', function(json)
     end
 end)
 
--- Function to read all lines from a file
-local function read_lines(file_path)
-    local lines = {}
-    local result = with_file(file_path, "r", function(file)
-        for line in file:lines() do
-            table.insert(lines, line)
-        end
-        return lines
-    end)
-    return result
-end
-
--- Function to write lines to a file 
-local function write_lines(file_path, lines)
-    return with_file(file_path, "w", function(file)
-        for _, line in ipairs(lines) do
-            file:write(line, "\n")
-        end
-        return true
-    end)
-end
-
--- Function to process lines and keep the last N items
-local function process_lines(lines, keep_n, ext)
-    local seen_paths = {}
-    local processed_lines = {}
-    local processed_playlists = {}
-    -- Iterate over lines in reverse order
-
-    for i = #lines, 1, -1 do
-        local line = lines[i]
-
-        if line == nil then
-            mp.msg.debug("Aborting found empty line. Check memo.log")
-            break
-        end
-
-        -- Extract the path from the line
-        local path = line:match("[^,]*,[^,]*,[^,]*,([^,]*),")
-        -- fix issue with case-sensitive checks TODO: why are some paths uppercased?
-        local lower_path = path:lower()
-        if path and not seen_paths[lower_path] then
-            seen_paths[lower_path] = true
-
-
-            if path:match("%.[^%.]+$") == options.ext then
-                --mp.msg.debug(seen_paths[path])
-                mp.msg.debug('[process_lines] found: ' .. path)
-                table.insert(processed_lines, 1, line)
-                 -- Track playlists separately
-                table.insert(processed_playlists, 1, path)
-            
-            -- Keep lines that match any of these conditions: is below limit, is unique
-            elseif (keep_n == 0) or (#processed_lines < keep_n) then
-                table.insert(processed_lines, 1, line)
-            end
-        end
-    end
-    return processed_lines, processed_playlists
-end
-
 -- Key binding function for memo cleanup
 mp.register_script_message("memo-cleanup", function(keep_n)
     local temp_path = history_path .. ".tmp"
@@ -1957,19 +1966,7 @@ end)
 
 mp.register_script_message("memo-pull-pldir", function()
     -- Get all files in playlist directory
-    local dir = mp.command_native({"expand-path", options.playlist_path})
-    local files = mp.utils.readdir(dir,'files')
-  
-    mp.msg.debug("Trying to populate playlist from dir: " .. dir)
-    -- Read current history to check what files are already logged
-    local all_lines = read_lines(history_path)
-    local seen_paths = {}
-    
-    -- Build lookup table of paths already in history
-    if all_lines then
-       _, seen_paths = process_lines(all_lines, 0, options.ext)
-    end
-
+    local files, seen_paths = get_playlists()
 
     -- Check each playlist file and log if not already in history
     if files then
@@ -1988,7 +1985,7 @@ mp.register_script_message("memo-pull-pldir", function()
             end
         end
     end
-    memo_clear()
+    --memo_clear()
 
 end)
 -- slapdash-end

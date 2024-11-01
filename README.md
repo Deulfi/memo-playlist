@@ -19,17 +19,8 @@ This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist sa
 - It's quite rudimentary, don't expect a well done playlist management system. It's more like a 'Oh, shoot. I want to quickly save this for later'
 
 ## Installation
-
-### Basic Installation
 Place **memo.lua** in your mpv `scripts` folder.  
 Default settings are listed in **memo.conf**, copy it to your mpv `script-opts` folder to customize.
-
-### Optional Dependencies
-#### Enhanced Input Method
-For a better input experience when naming playlists, you can:
-- Install [user-input](https://github.com/CogentRedTester/mpv-user-input) module
-- Set `use_user_input=yes` in memo.conf to enable it
-- If you don't want the user-input module, leave the flag at 'no' in memo.conf for a native input method. (the console output is normal)
 
 ## Custom keybinds
 One keybind is provided for use in `input.conf`.  
@@ -76,19 +67,19 @@ A file with all default options and their descriptions is included in the repo.
 You can add these lines to your `input.conf`and change to your liking:
 
 ```conf
-g       script-binding memo-playlist
-#                                                                           #! Playlist > Playlist Management
-ctrl+s  script-message-to memo memo-save ;show-text "Saved playlist" 3000   #! Playlist > Save
-#       script-message-to memo memo-load                                    #! Playlist > Load
-ctrl+S  script-message-to memo memo-save-as ;show-text "Input Save" 3000    #! Playlist > Save as
-#       script-message-to memo memo-save Internet                           #! Playlist > Internet > Save
-#       script-message-to memo memo-load Internet                           #! Playlist > Internet > Load
-#       script-message-to memo memo-save Music                              #! Playlist > Music > Save
-#       script-message-to memo memo-load Music                              #! Playlist > Music > Load
-#       script-message-to memo memo-cleanup                                 #! Playlist > Other > Deduplicate
-y       script-message-to memo memo-cleanup 100                             #! Playlist > Other > Cleanup
-Y       script-message-to memo memo-pull-pldir                              #! Playlist > Other > Repopulate
-#       playlist-clear                                                      #! Playlist > Other > Clear
+g             script-binding memo-playlist
+#                                                               #! Playlist > Playlist Management
+ctrl+s        script-message-to memo memo-save                  #! Playlist > Save
+#             script-message-to memo memo-load                  #! Playlist > Load
+ctrl+S        script-message-to memo memo-save-as               #! Playlist > Save as
+#             script-message-to memo memo-save Internet         #! Playlist > Internet > Save
+#             script-message-to memo memo-load Internet         #! Playlist > Internet > Load
+#             script-message-to memo memo-save Music            #! Playlist > Music > Save
+#             script-message-to memo memo-load Music            #! Playlist > Music > Load
+#             script-message-to memo memo-cleanup               #! Playlist > Other > Deduplicate
+y             script-message-to memo memo-cleanup 100           #! Playlist > Other > Cleanup
+Y             script-message-to memo memo-pull-pldir            #! Playlist > Other > Repopulate
+#             playlist-clear                                    #! Playlist > Other > Clear
 ```
 
 # Acknowledgments
