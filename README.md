@@ -71,7 +71,8 @@ g             script-binding memo-playlist
 #                                                               #! Playlist > Playlist Management
 ctrl+s        script-message-to memo memo-save                  #! Playlist > Save
 #             script-message-to memo memo-load                  #! Playlist > Load
-ctrl+S        script-message-to memo memo-save-as               #! Playlist > Save as
+ctrl+S        script-message-to memo memo-action save           #! Playlist > Save as
+ctrl+D        script-message-to memo memo-action delete         #! Playlist > Delete
 #             script-message-to memo memo-save Internet         #! Playlist > Internet > Save
 #             script-message-to memo memo-load Internet         #! Playlist > Internet > Load
 #             script-message-to memo memo-save Music            #! Playlist > Music > Save
