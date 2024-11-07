@@ -1260,7 +1260,6 @@ mp.register_script_message("uosc-version", function(version)
 
     local min_version = "5.0.0"
     uosc_available = not semver_comp(version, min_version)
-    --uosc_available = false
 end)
 
 mp.register_script_message("menu-ready", function(client_name)
@@ -1483,7 +1482,28 @@ end)
 mp.register_event("file-loaded", file_load)
 mp.register_idle(idle)
 
--- slapdash
+-------------------------------
+-------------------------------
+--------- slapdash ------------
+-------------------------------
+-------------------------------
+
+local function create_directory_if_missing(path)
+    local dir = mp.command_native({ "expand-path", path })
+    local res = mp.utils.file_info(dir)
+
+    if not res then
+        mp.msg.error("Creating directory: " .. dir)
+        if res.config:sub(1,1) == "/" then
+            -- create the directory for linux
+            os.execute(string.format('mkdir -p "%s"', dir))
+        else
+            -- create the directory for windows
+            os.execute(string.format('mkdir "%s"', dir))
+        end
+    end
+end
+
 -- Helper function for safe file operations
 local function with_file(path, mode, func)
     local file, err = io.open(path, mode)
@@ -1502,22 +1522,6 @@ local function with_file(path, mode, func)
     end
 
     return result
-end
-
-local function create_directory_if_missing(path)
-    local dir = mp.command_native({ "expand-path", path })
-    local res = mp.utils.file_info(dir)
-
-    if not res then
-        mp.msg.error("Creating directory: " .. dir)
-        if package.config:sub(1,1) == "/" then
-            -- create the directory for linux
-            os.execute(string.format('mkdir -p "%s"', dir))
-        else
-            -- create the directory for windows
-            os.execute(string.format('mkdir "%s"', dir))
-        end
-    end
 end
 
 -- Function to read all lines from a file
@@ -1640,6 +1644,7 @@ if options.show_save then
 end
 
 local default_flag = false
+
 --# Adapted parts from [https://github.com/CogentRedTester/mpv-scripts/blob/master/keep-session.lua]
 --# Copyright (c) [2020] [Oscar Manglaras]
 --# MIT License
@@ -1654,6 +1659,10 @@ end
 
 create_directory_if_missing(options.playlist_path)   
 
+options.playlist_path = mp.command_native({"expand-path", options.playlist_path})
+options.playlist_path = normalize(options.playlist_path)
+
+
 -- button for uosc ribbon TODO: replace names with variables
 mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils.format_json({
     icon = options.icon,
@@ -1666,7 +1675,9 @@ mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils
 
 function custom_write_history(display, full_path)
     --mp.msg[display and "info" or "debug"]("[memo] logging file " .. full_path)
-    local _, title = mp.utils.split_path(full_path)
+    local _, file = mp.utils.split_path(full_path)
+    local title, extension = file:match("^(.*)%.(.*)$")
+
 
     mp.msg.debug("logging playlist " .. full_path)
     if display then
@@ -1724,11 +1735,15 @@ local function save_playlist(playlist_name, playlist_full_path)
         return
     end
 
+    -- position loading is bugged if its done directly after a playlist is loaded, maybe a subprocess would work
+    --local time_pos = mp.get_property('time-pos')
+    local playlist_pos = mp.get_property('playlist-pos')
+    local both_pos = time_pos and (playlist_pos .. ":" .. time_pos) or playlist_pos
 
     local success, err = with_file(playlist_full_path, "w", function(pls_file)
         local working_directory = mp.get_property('working-directory')
         local count = 0
-        pls_file:write("[playlist]\n" .. mp.get_property('playlist-pos') .. "\n")
+        pls_file:write("[playlist]\n" .. both_pos ..   "\n")
 
         for i, v in ipairs(playlist) do
             count = i
@@ -1781,17 +1796,23 @@ function input_action(action)
     local pl_title, _ = get_playlists()
     local input_string = "default"
     local input = require 'mp.input'
-    local playlist_name = "default"
-
+    --local playlist_name = "default"
+    local aborted = false
 
    input.select({
     prompt = "Enter playlist name: ",
     items = pl_title,
+    default_item = 1,
+    opened = function ()
+    end,
     edited = function (input_string)
-        playlist_name = input_string
+        mp.msg.trace(input_string)
+        if #input_string >= 4 and string.sub(input_string, -4) == "exit" then
+            aborted = true
+            input.terminate()
+        end
     end,
     submit = function (input_string)
-        print("in submit: ", action, submitted)
         mp.msg.debug("pl_title[id]: ",pl_title[input_string])
         playlist_name = pl_title[input_string]
         if action == "delete" then
@@ -1804,12 +1825,15 @@ function input_action(action)
             end
         end
     end,
-    closed = function ()
+    closed = function (playlist_name)
+        print("closed: ", playlist_name)
         -- input.select does ignores submit if input_string is not in items.
         -- so we just do it here
         -- TODO: catch esc key press
-        if action == "save" then
+        if action == "save_as" and #playlist_name > 0 and not aborted then
             save_playlist(playlist_name)
+        else
+            print("aborted")
         end
 
         mp.msg.debug("closed input")
@@ -1818,22 +1842,26 @@ function input_action(action)
         end
     end,
     })
-    
 end
 
 -- either 
-local function load_playlist(name)
-    local file = mp.command_native({"expand-path", options.playlist_path..name.. options.ext})
-    if not file then
-        mp.msg.error("Could not expand path: " .. (file or "nil"))
-        return
+local function load_playlist(name, path)
+    local file = nil
+    if name then
+        file = mp.command_native({"expand-path", options.playlist_path..name.. options.ext})
+        if not file then
+            mp.msg.error("Could not expand path: " .. (file or "nil"))
+            return
+        end
+    elseif path then
+        file = path
+    else
+        mp.msg.debug("No valid name or path, Aborting loading Playlist")
     end
-
     -- Check if file exists and load playlist
-    local success = with_file(file, "r", function(f)
+    local success, time_pos = with_file(file, "r", function(f)
         mp.commandv("loadlist", file, "replace")
         mp.msg.verbose('Playlist loaded from: ' .. file)
-
         if options.load_position then
             -- Check playlist format and get position
             local first_line = f:read()
@@ -1842,19 +1870,21 @@ local function load_playlist(name)
                 return false
             end
 
-            local pos = f:read('*n')
+            local second_line = f:read()
+            local pos, time_pos = second_line:match("(%d+):([%d%.]+)")
             if pos then
                 mp.msg.verbose("restoring playlist position", pos)
-                mp.set_property_number('playlist-start', pos)
+                mp.set_property_number('playlist-current-pos', pos)
             end
         end
-        return true
+        return true, time_pos
     end)
 
     if not success then
         mp.msg.error("Failed to load playlist or position: " .. file)
         mp.osd_message("Failed to load playlist or position: " .. file, 3)
     end
+
 end
 
 -- autload last session
@@ -1879,12 +1909,14 @@ function custom_search(indirect)
         hide_duplicates = options.hide_duplicates,
         pagination = options.pagination,
         use_titles = options.use_titles,
-        hide_same_dir = options.hide_same_dir
+        hide_same_dir = options.hide_same_dir,
+        entires = options.entries
     }
     options.hide_duplicates = true
     options.pagination = false 
     options.use_titles = false 
     options.hide_same_dir = false
+    options.entries = 99
     -- save should never show up in normal history menu. 
     if options.show_save == nil then options.show_save = true end
 
@@ -1898,6 +1930,7 @@ function custom_search(indirect)
     options.pagination = tmp_options.pagination
     options.hide_duplicates = tmp_options.hide_duplicates
     options.hide_same_dir = tmp_options.hide_same_dir
+    options.entries = tmp_options.entires
 
 end
 
@@ -1921,50 +1954,60 @@ mp.register_script_message('menu-event', function(json)
         return
     end
 
-    if event.type == 'activate' or event.type then
+    if not (event.type == 'activate' or event.type) then 
+        mp.msg.warn("Received event without type")
+        return 
+    end
+
+    if     event.value[1] == 'memo-next' or event.value[2] == 'memo-next' then memo_next()
+    elseif event.value[1] == 'memo-prev' or event.value[2] == 'memo-prev' then memo_prev()
+    
+    elseif event.action == 'delete_memo_entry' or event.key == 'del' then
         -- delete entry
-        if event.action == 'delete_memo_entry' or event.key == 'del' then
-            path_to_delete = event.key == 'del' 
-                and (event.selected_item and event.selected_item.value and event.selected_item.value[2])
-                or event.value[2]
+        path_to_delete = event.key == 'del' 
+            and (event.selected_item and event.selected_item.value and event.selected_item.value[2])
+            or event.value[2]
 
-            if path_to_delete then
-                local result = delete_entry(path_to_delete)
+        if path_to_delete then
+            local result = delete_entry(path_to_delete)
 
-                if result then     -- update menu
-                    uosc_update()
-                    -- open filtered menu if the deleted entry was a playlist
-                    if path_to_delete:match("%.[^%.]+$") == options.ext then
-                        if options.delte_pl_file then
-                            os.remove(path_to_delete)
-                        end
-                        custom_search(true)
+            if result then     -- update menu
+                uosc_update()
+                -- open filtered menu, and not history, if the deleted entry was a playlist
+                if path_to_delete:match("%.[^%.]+$") == options.ext then
+                    if options.delte_pl_file then
+                        os.remove(path_to_delete)
                     end
-                    show_history(options.entries, false, false, true, false)
+                    custom_search(true)
                 end
-            else 
-                mp.msg.error('No entry selected for deletion')
-                mp.osd_message('No entry selected for deletion', 3)
+                show_history(options.entries, false, false, true, false)
             end
-        -- append to playlist
-        elseif event.action == 'add_to_playlist' or (event.modifiers == 'shift' and event.type == 'activate') then
-            local file = event.value[2]
-            local _, title = mp.utils.split_path(file)
-	        mp.msg.debug('added to playlist: ' .. title)
-            mp.osd_message('Added to playlist: ' .. title, 3)
-            mp.commandv('loadfile', file, 'append')
-        -- Save playlist
-        elseif event.action == 'save_playlist' or (event.modifiers == 'alt' and event.type == 'activate') then
-
-            local file = event.value[2]
-            save_playlist(nil, file)
-        else
-            mp.command_native(event.value)
-            memo_close()
+        else 
+            mp.msg.error('No entry selected for deletion')
+            mp.osd_message('No entry selected for deletion', 3)
         end
 
-        mp.commandv('script-message-to', 'uosc', 'close-menu', 'menu_type')
+    elseif event.action == 'add_to_playlist' or (event.modifiers == 'shift' and event.type == 'activate') then
+        -- append to playlist
+        local file = event.value[2]
+        local _, title = mp.utils.split_path(file)
+        mp.msg.debug('added to playlist: ' .. title)
+        mp.osd_message('Added to playlist: ' .. title, 3)
+        mp.commandv('loadfile', file, 'append')
+
+    elseif event.action == 'save_playlist' or (event.modifiers == 'alt' and event.type == 'activate') then
+        -- save playlist
+        local file = event.value[2]
+        save_playlist(nil, file)
+        memo_close()
+    else
+        -- load normal history
+        mp.command_native(event.value)
+        memo_close()
     end
+
+        --mp.commandv('script-message-to', 'uosc', 'close-menu', 'menu_type')
+
 end)
 
 -- Key binding function for memo cleanup

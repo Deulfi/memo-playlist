@@ -5,18 +5,20 @@ This script saves your watch history + rudimentary playlists, and displays it in
 
 ![Preview](https://user-images.githubusercontent.com/42466980/236659593-59d6b517-c560-4a2f-b30c-cb8daf7050e2.png)
 
-This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist saving functionality while no touching the original code (much).
+This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist saving functionality while not touching the original code (much).
 
 ## New Features
 - Save current playlist as .pls file (compatible with most media players)
-- Configurable save location and file extension via memo.conf
+- Configurable save location and file extension of playlists via memo.conf
 - Playlist management menu (default keybind: g)
 - UOSC buttons for the memo and playlist menus
 - Method to clean memo.log up a bit
+- Vanilla menu for deleting playlists
 
 ## Notice
-- Only tested on Windows and with UOSC. Vanilla menus should work fine, since I didn't mess with it, but no guarantees.
+- Mainly tested on Windows and with UOSC. Vanilla menus seemed to work, but I only looked at it shortly. It should work fine, since my addition aren't messing with it, but no guarantees.
 - It's quite rudimentary, don't expect a well done playlist management system. It's more like a 'Oh, shoot. I want to quickly save this for later'
+- While memo reads only what it needs, this does not apply to playlist stuff. It needs to look through all entries and could be quit slow if your history is large.
 
 ## Installation
 Place **memo.lua** in your mpv `scripts` folder.  
@@ -36,8 +38,11 @@ Example usage: `G script-message memo-save SomePlaylistName`
 `memo-save`  
 Saves the current playlist, as default if no name is specified.
 
-`memo-save-as`  
-Saves the current playlist with a custom name, opens input method of MPV to enter the name or selecting from previous playlists.
+`memo-action` `save_as`  
+Saves the current playlist with a custom name, opens input method of MPV to enter the name or selecting from previous playlists. (ESC won't work for aborting, type 'exit' or leave input-field empty to close without saving)
+
+`memo-action` `delete`  
+Delete a playlist, opens input method of MPV where you can select the playlist to delete.
 
 `memo-load`  
 Loads the specified playlist, or default if none is specified.
@@ -71,7 +76,7 @@ g             script-binding memo-playlist
 #                                                               #! Playlist > Playlist Management
 ctrl+s        script-message-to memo memo-save                  #! Playlist > Save
 #             script-message-to memo memo-load                  #! Playlist > Load
-ctrl+S        script-message-to memo memo-action save           #! Playlist > Save as
+ctrl+S        script-message-to memo memo-action save_as        #! Playlist > Save as
 ctrl+D        script-message-to memo memo-action delete         #! Playlist > Delete
 #             script-message-to memo memo-save Internet         #! Playlist > Internet > Save
 #             script-message-to memo memo-load Internet         #! Playlist > Internet > Load
