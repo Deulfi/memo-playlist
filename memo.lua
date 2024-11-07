@@ -1907,16 +1907,16 @@ function custom_search(indirect)
     search_words = {options.ext}
     local tmp_options = {
         hide_duplicates = options.hide_duplicates,
-        pagination = options.pagination,
+        --pagination = options.pagination,
         use_titles = options.use_titles,
         hide_same_dir = options.hide_same_dir,
-        entires = options.entries
+        --entires = options.entries
     }
     options.hide_duplicates = true
-    options.pagination = false 
+    --options.pagination = false 
     options.use_titles = false 
     options.hide_same_dir = false
-    options.entries = 99
+    --options.entries = 99
     -- save should never show up in normal history menu. 
     if options.show_save == nil then options.show_save = true end
 
@@ -1927,10 +1927,10 @@ function custom_search(indirect)
     if options.show_save then options.show_save = nil end
     search_words = nil
     options.use_titles = tmp_options.use_titles
-    options.pagination = tmp_options.pagination
+    --options.pagination = tmp_options.pagination
     options.hide_duplicates = tmp_options.hide_duplicates
     options.hide_same_dir = tmp_options.hide_same_dir
-    options.entries = tmp_options.entires
+    --options.entries = tmp_options.entires
 
 end
 
@@ -1954,11 +1954,17 @@ mp.register_script_message('menu-event', function(json)
         return
     end
 
-    if not (event.type == 'activate' or event.type) then 
-        mp.msg.warn("Received event without type")
-        return 
+    if options.pagination and event.key == 'right' then
+        memo_next()
+    elseif options.pagination and event.key == 'left' then
+        memo_prev()
     end
 
+
+    if event.type ~= 'activate' or  not event.type then 
+        return 
+    end
+    -- here are button events or entry click handled
     if     event.value[1] == 'memo-next' or event.value[2] == 'memo-next' then memo_next()
     elseif event.value[1] == 'memo-prev' or event.value[2] == 'memo-prev' then memo_prev()
     
@@ -2005,9 +2011,7 @@ mp.register_script_message('menu-event', function(json)
         mp.command_native(event.value)
         memo_close()
     end
-
         --mp.commandv('script-message-to', 'uosc', 'close-menu', 'menu_type')
-
 end)
 
 -- Key binding function for memo cleanup
