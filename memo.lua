@@ -487,11 +487,11 @@ function menu_json(menu_items, page)
     --slapdash Playlist
     menu.item_actions = {}
     local delete = {name = 'delete_memo_entry', icon = 'delete', label = 'Remove (del)'}
-    local add_to_playlist = {name = 'add_to_playlist', icon = 'playlist_add', label = 'Add to playlist' .. ' (shift+enter/click)'}
-    local save = {name = 'save_playlist', icon = 'save', label = 'Save playlist' .. ' (alt+enter/click)'}
+    local append = {name = 'append_memo_entry', icon = 'playlist_add', label = 'Add to playlist' .. ' (shift+enter/click)'}
+    local saveto = {name = 'saveto_memo_entry', icon = 'save', label = 'Save playlist' .. ' (alt+enter/click)'}
 
-    if options.show_append then menu.item_actions[#menu.item_actions+1] = add_to_playlist end
-    if options.show_save then menu.item_actions[#menu.item_actions+1] = save end
+    if options.show_append then menu.item_actions[#menu.item_actions+1] = append end
+    if options.show_save then menu.item_actions[#menu.item_actions+1] = saveto end
     if options.show_delete then menu.item_actions[#menu.item_actions+1] =delete end
    
     menu.callback = {mp.get_script_name(), 'menu-event'}
@@ -1945,7 +1945,6 @@ mp.register_event('shutdown', autosave)
 mp.register_script_message('menu-event', function(json)
     -- get event in readable format
     local event = mp.utils.parse_json(json)
-    local path_to_delete = nil
     mp.msg.debug('event: ' .. mp.utils.to_string(event))
 
     -- More explicit event type handling
@@ -1960,57 +1959,87 @@ mp.register_script_message('menu-event', function(json)
         memo_prev()
     end
 
-
-    if event.type ~= 'activate' or  not event.type then 
+    -- return if it isn't some kind of button or clicking action
+    if event.type ~= 'activate' then 
         return 
     end
-    -- here are button events or entry click handled
-    if     event.value[1] == 'memo-next' or event.value[2] == 'memo-next' then memo_next()
-    elseif event.value[1] == 'memo-prev' or event.value[2] == 'memo-prev' then memo_prev()
-    
-    elseif event.action == 'delete_memo_entry' or event.key == 'del' then
-        -- delete entry
-        path_to_delete = event.key == 'del' 
-            and (event.selected_item and event.selected_item.value and event.selected_item.value[2])
-            or event.value[2]
 
-        if path_to_delete then
-            local result = delete_entry(path_to_delete)
+    -- Define handlers as separate functions for clarity
+    local handlers = {
 
-            if result then     -- update menu
-                uosc_update()
-                -- open filtered menu, and not history, if the deleted entry was a playlist
-                if path_to_delete:match("%.[^%.]+$") == options.ext then
-                    if options.delte_pl_file then
-                        os.remove(path_to_delete)
+        ['delete_memo_entry'] = function(event)
+            local path_to_delete = event.key == 'del'
+                and (event.selected_item and event.selected_item.value and event.selected_item.value[2])
+                or event.value[2]
+                
+            if path_to_delete then
+                local result = delete_entry(path_to_delete)
+                if result then
+                    uosc_update()
+                    -- open filtered menu, and not history, if the deleted entry was a playlist
+                    if path_to_delete:match("%.[^%.]+$") == options.ext then
+                        if options.delte_pl_file then
+                            os.remove(path_to_delete)
+                        end
+                        custom_search(true)
                     end
-                    custom_search(true)
+                    show_history(options.entries, false, false, true, false)
                 end
-                show_history(options.entries, false, false, true, false)
+            else
+                mp.msg.error('No entry selected for deletion')
+                mp.osd_message('No entry selected for deletion', 3)
             end
-        else 
-            mp.msg.error('No entry selected for deletion')
-            mp.osd_message('No entry selected for deletion', 3)
+        end,
+        
+        ['append_memo_entry'] = function(event)
+            local file = event.value[2]
+            local _, title = mp.utils.split_path(file)
+            mp.msg.debug('added to playlist: ' .. title)
+            mp.osd_message('Added to playlist: ' .. title, 3)
+            mp.commandv('loadfile', file, 'append')
+        end,
+        
+        ['saveto_memo_entry'] = function(event)
+            local file = event.value[2]
+            save_playlist(nil, file)
+            memo_close()
+        end,
+        
+        ['default'] = function(event)
+            mp.command_native(event.value)
+        end
+    }
+
+    -- Main event handler
+    local function handle_event(event)
+        -- Check for memo navigation first
+        -- We need this or else the delete and other buttons on pagniation entries would do nonsense
+        -- since we handle them here it never comes to delete or append
+        if event.value[1] == 'script-binding' then
+            return handlers['default'](event)
         end
 
-    elseif event.action == 'add_to_playlist' or (event.modifiers == 'shift' and event.type == 'activate') then
-        -- append to playlist
-        local file = event.value[2]
-        local _, title = mp.utils.split_path(file)
-        mp.msg.debug('added to playlist: ' .. title)
-        mp.osd_message('Added to playlist: ' .. title, 3)
-        mp.commandv('loadfile', file, 'append')
-
-    elseif event.action == 'save_playlist' or (event.modifiers == 'alt' and event.type == 'activate') then
-        -- save playlist
-        local file = event.value[2]
-        save_playlist(nil, file)
+        -- Handle delete events
+        if event.action == 'delete_memo_entry' or event.key == 'del' then
+            return handlers['delete_memo_entry'](event)
+        end
+        
+        -- Handle playlist addition and shift modifier
+        if event.action == 'append_memo_entry' or event.modifiers == 'shift' then
+            return handlers['append_memo_entry'](event)
+        end
+        
+        -- Handle playlist save and alt modifier
+        if event.action == 'saveto_memo_entry' or event.modifiers == 'alt' then
+            return handlers['saveto_memo_entry'](event)
+        end
+        
+        -- Default handler for normal history
         memo_close()
-    else
-        -- load normal history
-        mp.command_native(event.value)
-        memo_close()
+        return handlers['default'](event)
     end
+
+    handle_event(event)
         --mp.commandv('script-message-to', 'uosc', 'close-menu', 'menu_type')
 end)
 
