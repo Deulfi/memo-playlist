@@ -5,19 +5,18 @@ This script saves your watch history + rudimentary playlists, and displays it in
 
 ![Preview](https://user-images.githubusercontent.com/42466980/236659593-59d6b517-c560-4a2f-b30c-cb8daf7050e2.png)
 
-This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist saving functionality while not touching the original code (much).
+This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist saving functionality while not touching the original code.
 
 ## New Features
 - Save current playlist as .pls file (compatible with most media players)
 - Configurable save location and file extension of playlists via memo.conf
 - Playlist management menu (default keybind: g)
-- UOSC buttons for the memo and playlist menus
+- UOSC save button for the playlist menu
 - Method to clean memo.log up a bit
-- Vanilla menu for deleting playlists
 
 ## Notice
 - Mainly tested on Windows and with UOSC. Vanilla menus seemed to work, but I only looked at it shortly. It should work fine, since my addition aren't messing with it, but no guarantees.
-- It's quite rudimentary, don't expect a well done playlist management system. It's more like a 'Oh, shoot. I want to quickly save this for later'
+- It's quite rudimentary, don't expect a well done playlist management system. It's more like a 'Oh, shoot. I want to quickly save this for later' option
 - While memo reads only what it needs, this does not apply to playlist stuff. It needs to look through all entries and could be quit slow if your history is large.
 
 ## Installation
@@ -50,10 +49,11 @@ Loads the specified playlist, or default if none is specified.
 `memo-cleanup`  
 Cleans up the file memo uses:
 - Deduplicates memo.log
-- Keeps only the last n  memo entries (does not delete unique playlists, n=0 keeps all unique entries)
+- Keeps only the last n memo entries (does not remove unique playlists, n=0 keeps all unique entries)
+- Removes memo entries and playlists marked as hidden and deletes playlist from filesystem if corresponding options are enabled
 
 `memo-pull-pldir`  
-Goes through the playlist directory and pulls all playlists files into the memo history. Useful if you want to add external playlists or they are not in memo for some reason.
+Goes through the playlist directory and pulls all playlists files into the memo history. Useful if you want to add external playlists or they are not in the history for some reason.
 
 ## uosc menus and buttons
 Adding a menu: append ` #! Playlist` to your `input.conf` keybind, or use this for a menu-only config.

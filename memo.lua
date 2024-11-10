@@ -83,11 +83,8 @@ local options = {
     keep_n = 0,
     -- delete playlists from memo and filesystem
     delte_pl_file = true,
-
-    -- show button in uosc menu
-    show_append = true,
-    show_delete = true,
-    show_save = true,
+    -- remove entries marked as hidden
+    remove_hidden = true,
 }
 function parse_path_prefixes(path_prefixes)
     local patterns = {}
@@ -1633,20 +1630,23 @@ local function process_lines(lines, keep_n, ext)
         local lower_path = path:lower()
         if path and not seen_paths[lower_path] then
             seen_paths[lower_path] = true
-            if time_hide == "hide" then
-                if is_playlist(path) then
+
+
+            if is_playlist(path) then
+                if time_hide == "hide" and options.delte_pl_file then
+                    -- track playlists to delete
                     table.insert(processed_toDelete, path)
+                else
+                    table.insert(processed_lines, 1, line)
                 end
-            elseif is_playlist(path) then
-                --mp.msg.debug(seen_paths[path])
-                mp.msg.debug('[process_lines] found: ' .. path)
-                table.insert(processed_lines, 1, line)
-                 -- Track playlists separately
+                -- Track playlists separately
                 table.insert(processed_playlists, path)
             
             -- Keep lines that match any of these conditions: is below limit, is unique
             elseif (keep_n == 0) or (#processed_lines < keep_n) then
-                table.insert(processed_lines, 1, line)
+                if time_hide ~= "hide" and options.remove_hidden then
+                    table.insert(processed_lines, 1, line)
+                end
             end
         end
     end
@@ -2056,10 +2056,6 @@ mp.register_script_message("menu-event", function(json)
     -- hijacks the menu event, check if our action is triggerd , if not proceed to continue with normal memo flow.
     local event = mp.utils.parse_json(json)
     if event.type == "activate" or event.type == "key" then
-        if event.action == "memo_action_hide" or event.key == "del" then
-            pl_menu_data = nil
-        end
-
         if options.pagination and event.key == 'right' then
             memo_next()
         elseif options.pagination and event.key == 'left' then
@@ -2068,7 +2064,12 @@ mp.register_script_message("menu-event", function(json)
             local item = event.selected_item and event.selected_item or event
             mp.commandv("script-message-to", script_name, "memo-save", "", item.value[2])
             memo_close()
-
+        elseif event.action == "memo_action_hide" or event.key == "del" then
+                pl_menu_data = nil
+                local item = event.selected_item and event.selected_item or event
+                if item.value[1] ~= "loadfile" then return end
+                write_history(false, item.value[2], true, item.index)
+                custom_search()
         else
             process_menu_event(event)
         end
