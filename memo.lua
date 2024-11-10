@@ -38,6 +38,7 @@ local options = {
     down_binding = "DOWN WHEEL_DOWN",
     select_binding = "RIGHT ENTER",
     append_binding = "Shift+RIGHT Shift+ENTER",
+    hide_binding = "DEL",
     close_binding = "LEFT ESC",
 
     -- Path prefixes for the recent directory menu
@@ -88,7 +89,6 @@ local options = {
     show_delete = true,
     show_save = true,
 }
-
 function parse_path_prefixes(path_prefixes)
     local patterns = {}
     for prefix in path_prefixes:gmatch("([^|]+)") do
@@ -469,10 +469,17 @@ function loadfile_compat(path)
     return {path}
 end
 
-function menu_json(menu_items, page)
+function menu_json(menu_items, page, hidden_files)
     local title = (search_query or (dir_menu and "Directories" or "History")) .. " (memo)"
     if options.pagination or page ~= 1 then
         title = title .. " - Page " .. page
+    end
+
+    for i = #menu_items, 1, -1 do
+        local item = menu_items[i]
+        if hidden_files[item.value[2]] and (page * 10000 + i >= hidden_files[item.value[2]]) then
+            table.remove(menu_items, i)
+        end
     end
 
     local menu = {
@@ -482,20 +489,9 @@ function menu_json(menu_items, page)
         on_search = {"script-message-to", script_name, "memo-search-uosc:"},
         on_close = {"script-message-to", script_name, "memo-clear"},
         palette = palette, -- TODO: remove on next uosc release
-        search_style = palette and "palette" or nil
+        search_style = palette and "palette" or nil,
+        callback = {script_name, "menu-event"}
     }
-    --slapdash Playlist
-    menu.item_actions = {}
-    local delete = {name = 'delete_memo_entry', icon = 'delete', label = 'Remove (del)'}
-    local append = {name = 'append_memo_entry', icon = 'playlist_add', label = 'Add to playlist' .. ' (shift+enter/click)'}
-    local saveto = {name = 'saveto_memo_entry', icon = 'save', label = 'Save playlist' .. ' (alt+enter/click)'}
-
-    if options.show_append then menu.item_actions[#menu.item_actions+1] = append end
-    if options.show_save then menu.item_actions[#menu.item_actions+1] = saveto end
-    if options.show_delete then menu.item_actions[#menu.item_actions+1] =delete end
-   
-    menu.callback = {mp.get_script_name(), 'menu-event'}
-    -- slapdash-end Playlist
 
     return menu
 end
@@ -578,6 +574,7 @@ function close_menu()
     unbind_keys(options.down_binding, "move_down")
     unbind_keys(options.select_binding, "select")
     unbind_keys(options.append_binding, "append")
+    unbind_keys(options.hide_binding, "hide")
     unbind_keys(options.close_binding, "close")
     last_state = nil
     menu_data = nil
@@ -600,28 +597,14 @@ function open_menu()
     local margin_prop = mp.utils.shared_script_property_set and "shared-script-properties" or "user-data/osc/margins"
     mp.observe_property(margin_prop, "native", update_margins)
 
-    local function select_item(append)
+    local function select_item(action)
         local item = menu_data.items[last_state.selected_index]
         if not item then return end
-        if not item.keep_open then
-            close_menu()
+        if action then
+            process_menu_event({type = "activate", value = item.value, keep_open = item.keep_open, action = "memo_action_" .. action, index = last_state.selected_index})
+        else
+            process_menu_event({type = "activate", value = item.value, keep_open = item.keep_open})
         end
-        if append and item.value[1] == "loadfile" then
-            -- bail if file is already in playlist
-            local playlist = mp.get_property_native("playlist", {})
-            for i = 1, #playlist do
-                local playlist_file = playlist[i].filename
-                local display_path, save_path, effective_path, effective_protocol, is_remote, file_options = path_info(playlist_file)
-                if not is_remote then
-                    playlist_file = normalize(save_path)
-                end
-                if item.value[2] == playlist_file then
-                    return
-                end
-            end
-            item.value[3] = "append-play"
-        end
-        mp.commandv(unpack(item.value))
     end
 
     bind_keys(options.up_binding, "move_up", function()
@@ -634,7 +617,10 @@ function open_menu()
     end, { repeatable = true })
     bind_keys(options.select_binding, "select", select_item)
     bind_keys(options.append_binding, "append", function()
-        select_item(true)
+        select_item("append")
+    end)
+    bind_keys(options.hide_binding, "hide", function()
+        select_item("hide")
     end)
     bind_keys(options.close_binding, "close", close_menu)
     osd.hidden = false
@@ -714,8 +700,8 @@ function draw_menu()
     osd:update()
 end
 
-function get_full_path()
-    local path = mp.get_property("path")
+function get_full_path(forced_path)
+    local path = forced_path or mp.get_property("path")
     if path == nil or path == "-" or path == "/dev/stdin" then return end
 
     local display_path, save_path, effective_path, effective_protocol, is_remote, file_options = path_info(path)
@@ -811,8 +797,8 @@ function path_info(full_path)
     return display_path, save_path, effective_path, effective_protocol, is_remote, file_options
 end
 
-function write_history(display)
-    local full_path, display_path, save_path, effective_path, effective_protocol, is_remote, file_options = get_full_path()
+function write_history(display, forced_path, mark_hidden, item_index)
+    local full_path, display_path, save_path, effective_path, effective_protocol, is_remote, file_options = get_full_path(forced_path)
     if full_path == nil then
         mp.msg.debug("cannot get full path to file")
         if display then
@@ -829,7 +815,9 @@ function write_history(display)
         return
     end
 
-    if effective_protocol == "bd" or effective_protocol == "br" or effective_protocol == "bluray" then
+    if forced_path then
+        full_path = effective_path
+    elseif effective_protocol == "bd" or effective_protocol == "br" or effective_protocol == "bluray" then
         full_path = full_path .. " --opt=bluray-device=" .. mp.get_property("bluray-device", "")
     elseif effective_protocol == "cdda" then
         full_path = full_path .. " --opt=cdrom-device=" .. mp.get_property("cdrom-device", "")
@@ -847,13 +835,19 @@ function write_history(display)
         mp.osd_message("[memo] logging file " .. full_path)
     end
 
-    local playlist_pos = mp.get_property_number("playlist-pos") or -1
-    local title = playlist_pos > -1 and mp.get_property("playlist/"..playlist_pos.."/title") or ""
-    local title_length = #title
-    local timestamp = os.time()
-
     -- format: <timestamp>,<title length>,<title>,<path>,<entry length>
-    local entry = timestamp .. "," .. (title_length > 0 and title_length or "") .. "," .. title .. "," .. full_path
+    local entry = "hide,,," .. full_path
+
+    if not mark_hidden then
+        local playlist_pos = mp.get_property_number("playlist-pos") or -1
+        local title = playlist_pos > -1 and mp.get_property("playlist/"..playlist_pos.."/title") or ""
+        local title_length = #title
+        local timestamp = os.time()
+
+        entry = timestamp .. "," .. (title_length > 0 and title_length or "") .. "," .. title .. "," .. full_path
+    elseif last_state then
+        last_state.hidden_files[full_path] = last_state.current_page * 10000 + item_index
+    end
     local entry_length = #entry
 
     history:seek("end")
@@ -865,7 +859,7 @@ function write_history(display)
     end
 end
 
-function show_history(entries, next_page, prev_page, update, return_items)
+function show_history(entries, next_page, prev_page, update, return_items, keep_state)
     if event_loop_exhausted then return end
     event_loop_exhausted = true
 
@@ -880,9 +874,10 @@ function show_history(entries, next_page, prev_page, update, return_items)
     local max_digits_length = 4 + 2
     local retry_offset = 512
     local menu_items = {}
-    local state = (prev_page or next_page) and last_state or {
+    local state = (prev_page or next_page or keep_state) and last_state or {
         known_dirs = {},
         known_files = {},
+        hidden_files = {},
         existing_files = {},
         cursor = history:seek("end"),
         retry = 0,
@@ -891,7 +886,7 @@ function show_history(entries, next_page, prev_page, update, return_items)
         selected_index = 1
     }
 
-    if update then
+    if update and not keep_state then
         state.pages = {}
     end
 
@@ -909,7 +904,7 @@ function show_history(entries, next_page, prev_page, update, return_items)
     last_state = state
 
     if state.pages[state.current_page] then
-        menu_data = menu_json(state.pages[state.current_page], state.current_page)
+        menu_data = menu_json(state.pages[state.current_page], state.current_page, state.hidden_files)
 
         if uosc_available then
             uosc_update()
@@ -983,6 +978,14 @@ function show_history(entries, next_page, prev_page, update, return_items)
         local full_path = file_info:sub(title_length + 2)
 
         local display_path, save_path, effective_path, effective_protocol, is_remote, file_options = path_info(full_path)
+
+        if state.hidden_files[effective_path] then
+            return
+        elseif timestamp_str == "hide" then
+            state.hidden_files[effective_path] = state.current_page * 10000 + #menu_items + 1
+            return
+        end
+
         local cache_key = effective_path .. display_path .. (file_options or "")
 
         if options.hide_duplicates and state.known_files[cache_key] then
@@ -1151,7 +1154,13 @@ function show_history(entries, next_page, prev_page, update, return_items)
             end
         end
 
-        table.insert(menu_items, {title = title, hint = timestamp, value = command})
+        table.insert(menu_items, {title = title, hint = timestamp, value = command, actions_place = "inside",
+            actions = {
+                {name = "memo_action_hide", icon = "visibility_off", label = "Hide from past logs (del)"},
+                {name = "memo_action_append", icon = "playlist_add", label = "Add to playlist (shift+enter/click)"},
+            }
+        })
+
     end
 
     local item_count = -1
@@ -1182,7 +1191,7 @@ function show_history(entries, next_page, prev_page, update, return_items)
                 table.insert(temp_items, {value = {"ignore"}, keep_open = true})
             end
 
-            menu_data = menu_json(temp_items, state.current_page)
+            menu_data = menu_json(temp_items, state.current_page, state.hidden_files)
 
             if uosc_available then
                 uosc_update()
@@ -1210,7 +1219,7 @@ function show_history(entries, next_page, prev_page, update, return_items)
         end
     end
 
-    menu_data = menu_json(menu_items, state.current_page)
+    menu_data = menu_json(menu_items, state.current_page, state.hidden_files)
     state.pages[state.current_page] = menu_items
     last_state = state
 
@@ -1396,6 +1405,51 @@ function dyn_menu_update()
     mp.commandv("script-message-to", dyn_menu, "update", "memo", mp.utils.format_json(menu))
 end
 
+function process_menu_event(event)
+    if not event then return end
+
+    if event.type == "activate" or event.type == "key" then
+
+        if event.action == "memo_action_hide" or event.key == "del" then
+            local item = event.selected_item and event.selected_item or event
+            if item.value[1] ~= "loadfile" then return end
+            write_history(false, item.value[2], true, item.index)
+            -- TODO: shift over page data to fill out options.entries and continue reading if required to fill a page? have to move alread-fetched entry hiding out of menu_json()
+            show_history(options.entries, false, false, true, false, true)
+        elseif event.action == "memo_action_append" or (event.type == "activate" and event.modifiers == "shift") then
+            local item = event.selected_item and event.selected_item or event
+            if item.value[1] ~= "loadfile" then return end
+            -- bail if file is already in playlist
+            local playlist = mp.get_property_native("playlist", {})
+            for i = 1, #playlist do
+                local playlist_file = playlist[i].filename
+                local display_path, save_path, effective_path, effective_protocol, is_remote, file_options = path_info(playlist_file)
+                if not is_remote then
+                    playlist_file = normalize(save_path)
+                end
+                if item.value[2] == playlist_file then
+                    return
+                end
+            end
+            item.value[3] = "append-play"
+            mp.commandv(unpack(event.value))
+            local title
+            if last_state then
+                title = last_state.pages[last_state.current_page][item.index].title
+            else
+                dirname, basename = mp.utils.split_path(item.value[2])
+                title = basename ~= "" and basename or item.value[2]
+            end
+            mp.commandv("show-text", "Added to playlist: " .. title, 3000)
+        elseif event.value then
+            mp.commandv(unpack(event.value))
+            if not event.keep_open then
+                memo_close()
+            end
+        end
+    end
+end
+
 mp.register_script_message("memo-clear", memo_clear)
 mp.register_script_message("memo-search:", memo_search)
 mp.register_script_message("memo-search-uosc:", memo_search_uosc)
@@ -1479,15 +1533,21 @@ mp.register_script_message("memo-dirs", function(path_prefixes)
     show_history(options.entries, false)
 end)
 
+mp.register_script_message("menu-event", function(json)
+    local event = mp.utils.parse_json(json)
+    process_menu_event(event)
+end)
+
 mp.register_event("file-loaded", file_load)
 mp.register_idle(idle)
+
 
 -------------------------------
 -------------------------------
 --------- slapdash ------------
 -------------------------------
 -------------------------------
-
+local pl_menu_data = nil
 local function create_directory_if_missing(path)
     local dir = mp.command_native({ "expand-path", path })
     local res = mp.utils.file_info(dir)
@@ -1562,6 +1622,7 @@ local function process_lines(lines, keep_n, ext)
         end
 
         -- Extract the path from the line
+        -- TDOD: check if memo already has a function for this
         local path = line:match("[^,]*,[^,]*,[^,]*,([^,]*),")
         -- fix issue with case-sensitive checks TODO: why are some paths uppercased?
         local lower_path = path:lower()
@@ -1675,9 +1736,16 @@ mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils
 
 function custom_write_history(display, full_path)
     --mp.msg[display and "info" or "debug"]("[memo] logging file " .. full_path)
+    print("custom_write_history", full_path)
     local _, file = mp.utils.split_path(full_path)
+    print("filename", file)
+    -- TODO: catch options.ext in filename?
     local title, extension = file:match("^(.*)%.(.*)$")
 
+    if not title then
+        mp.msg.error("no title found, aborting")
+        return
+    end
 
     mp.msg.debug("logging playlist " .. full_path)
     if display then
@@ -1700,7 +1768,6 @@ end
 
 --saves the current playlist as a json string
 local function save_playlist(playlist_name, playlist_full_path)
-
     --if not playlist_name and not default_flag then
     if not playlist_name then
         playlist_name = "default"
@@ -1708,9 +1775,11 @@ local function save_playlist(playlist_name, playlist_full_path)
     
     if not playlist_full_path then
         mp.msg.debug("Only name found, creating full path with: ", playlist_name)
-        if playlist_name:find(options.ext, -#options.ext) then
+        if playlist_name:find("." .. options.ext, -#options.ext) then
             mp.msg.debug("Name with ext found, only adding path")
             playlist_full_path = mp.utils.join_path(options.playlist_path, playlist_name)
+            -- TODO: Check if this is enough for the uosc playlist menu or are there  new playlists that get saved with path
+            pl_menu_data = nil
         else
             playlist_name = playlist_name .. options.ext
             playlist_full_path = mp.utils.join_path(options.playlist_path, playlist_name)
@@ -1832,8 +1901,9 @@ function input_action(action)
         -- TODO: catch esc key press
         if action == "save_as" and #playlist_name > 0 and not aborted then
             save_playlist(playlist_name)
+            pl_menu_data = nil
         else
-            print("aborted")
+            mp.msg.debug("aborted")
         end
 
         mp.msg.debug("closed input")
@@ -1901,36 +1971,69 @@ function custom_search(indirect)
     if not indirect then
         memo_close()
     end
+
+    -- TODO: set entries to playlist count if available
     if event_loop_exhausted then return end
     last_state = nil
     -- show no duplicate for this menu
     search_words = {options.ext}
     local tmp_options = {
         hide_duplicates = options.hide_duplicates,
-        --pagination = options.pagination,
+        pagination = options.pagination,
         use_titles = options.use_titles,
         hide_same_dir = options.hide_same_dir,
-        --entires = options.entries
+        entires = options.entries
     }
     options.hide_duplicates = true
-    --options.pagination = false 
+    options.pagination = false 
     options.use_titles = false 
     options.hide_same_dir = false
-    --options.entries = 99
+    options.entries = 99
     -- save should never show up in normal history menu. 
-    if options.show_save == nil then options.show_save = true end
+    -- if options.show_save == nil then options.show_save = true end
 
-    show_history(options.entries,false,false,true,false)
+    if pl_menu_data == nil then
+        show_history(options.entries,false,false,true,false)
+    end
+    -- if playlist menu add a save button
+    if menu_data and pl_menu_data == nil then 
+        --print("custom_search", mp.utils.to_string(menu_data.items['actions']))
+        if not menu_data.items then 
+            return 
+        end  -- Ensure menu_data.items exists  
+        for i, item in ipairs(menu_data.items) do
+            if item.actions then
+                -- Check if the action already exists to avoid duplicates
+                local action_exists = false
+                for _, action in ipairs(item.actions) do
+                    if action.name == 'memo_action_saveto' then
+                        action_exists = true
+                        break
+                    end
+                end
+                if not action_exists then
+                    table.insert(item.actions, {name = 'memo_action_saveto', icon = 'save', label = 'Save playlist' .. ' (alt+enter/click)'})
+                end
+            end
+        end
+        pl_menu_data = menu_data
+        uosc_update()
+    else
+        local tmp_menu_data = menu_data
+        menu_data = pl_menu_data
+        uosc_update()
+        menu_data = tmp_menu_data
+    end
 
     --memo_search_uosc(options.ext)
 
-    if options.show_save then options.show_save = nil end
+    --if options.show_save then options.show_save = nil end
     search_words = nil
     options.use_titles = tmp_options.use_titles
-    --options.pagination = tmp_options.pagination
+    options.pagination = tmp_options.pagination
     options.hide_duplicates = tmp_options.hide_duplicates
     options.hide_same_dir = tmp_options.hide_same_dir
-    --options.entries = tmp_options.entires
+    options.entries = tmp_options.entires
 
 end
 
@@ -1940,107 +2043,27 @@ mp.register_script_message('memo-load', load_playlist)
 mp.register_script_message('memo-save', save_playlist)
 mp.register_script_message('memo-action', input_action)
 mp.register_event('shutdown', autosave)
-
--- Handle events (Buttons) of uosc menu
-mp.register_script_message('menu-event', function(json)
-    -- get event in readable format
+mp.register_script_message("menu-event", function(json)
+    -- hijacks the menu event, check if our action is triggerd , if not proceed to continue with normal memo flow.
     local event = mp.utils.parse_json(json)
-    mp.msg.debug('event: ' .. mp.utils.to_string(event))
+    if event.type == "activate" or event.type == "key" then
+        if event.action == "memo_action_hide" or event.key == "del" then
+            pl_menu_data = nil
+        end
 
-    -- More explicit event type handling
-    if not event.type then
-        mp.msg.warn("Received event without type")
-        return
-    end
-
-    if options.pagination and event.key == 'right' then
-        memo_next()
-    elseif options.pagination and event.key == 'left' then
-        memo_prev()
-    end
-
-    -- return if it isn't some kind of button or clicking action
-    if event.type ~= 'activate' then 
-        return 
-    end
-
-    -- Define handlers as separate functions for clarity
-    local handlers = {
-
-        ['delete_memo_entry'] = function(event)
-            local path_to_delete = event.key == 'del'
-                and (event.selected_item and event.selected_item.value and event.selected_item.value[2])
-                or event.value[2]
-                
-            if path_to_delete then
-                local result = delete_entry(path_to_delete)
-                if result then
-                    uosc_update()
-                    -- open filtered menu, and not history, if the deleted entry was a playlist
-                    if path_to_delete:match("%.[^%.]+$") == options.ext then
-                        if options.delte_pl_file then
-                            os.remove(path_to_delete)
-                        end
-                        custom_search(true)
-                    end
-                    show_history(options.entries, false, false, true, false)
-                end
-            else
-                mp.msg.error('No entry selected for deletion')
-                mp.osd_message('No entry selected for deletion', 3)
-            end
-        end,
-        
-        ['append_memo_entry'] = function(event)
-            local file = event.value[2]
-            local _, title = mp.utils.split_path(file)
-            mp.msg.debug('added to playlist: ' .. title)
-            mp.osd_message('Added to playlist: ' .. title, 3)
-            mp.commandv('loadfile', file, 'append')
-        end,
-        
-        ['saveto_memo_entry'] = function(event)
-            local file = event.value[2]
-            save_playlist(nil, file)
+        if options.pagination and event.key == 'right' then
+            memo_next()
+        elseif options.pagination and event.key == 'left' then
+            memo_prev()
+        elseif event.action == "memo_action_saveto" or event.key == "alt" then
+            local item = event.selected_item and event.selected_item or event
+            mp.commandv("script-message-to", script_name, "memo-save", "", item.value[2])
             memo_close()
-        end,
-        
-        ['default'] = function(event)
-            mp.command_native(event.value)
-        end
-    }
 
-    -- Main event handler
-    local function handle_event(event)
-        -- Check for memo navigation first
-        -- We need this or else the delete and other buttons on pagniation entries would do nonsense
-        -- since we handle them here it never comes to delete or append
-        if event.value[1] == 'script-binding' then
-            return handlers['default'](event)
+        else
+            process_menu_event(event)
         end
-
-        -- Handle delete events
-        if event.action == 'delete_memo_entry' or event.key == 'del' then
-            return handlers['delete_memo_entry'](event)
-        end
-        
-        -- Handle playlist addition and shift modifier
-        if event.action == 'append_memo_entry' or event.modifiers == 'shift' then
-            return handlers['append_memo_entry'](event)
-        end
-        
-        -- Handle playlist save and alt modifier
-        if event.action == 'saveto_memo_entry' or event.modifiers == 'alt' then
-            return handlers['saveto_memo_entry'](event)
-        end
-        
-        -- Default handler for normal history
-        memo_close()
-        return handlers['default'](event)
     end
-
-    handle_event(event)
-        --mp.commandv('script-message-to', 'uosc', 'close-menu', 'menu_type')
 end)
 
 -- Key binding function for memo cleanup
@@ -2063,7 +2086,7 @@ mp.register_script_message("memo-cleanup", function(keep_n)
     mp.osd_message("History cleaned up: kept " .. #lines .. " entries", 3)
     mp.msg.debug("History cleanup completed. Removed " .. (#all_lines - #lines) .. " entries")
 
-    -- Close and reopen history file to load modified data
+    -- reload history file to load modified data
     history:close()
     history = io.open(history_path, "a+b")
     history:setvbuf("full")
@@ -2091,6 +2114,7 @@ mp.register_script_message("memo-pull-pldir", function()
                 custom_write_history(false, full_path)
             end
         end
+        pl_menu_data = nil
     end
 end)
 -- slapdash-end
@@ -2099,3 +2123,16 @@ end)
 -- TODO: https://mpv.io/manual/stable/#command-interface-stream-pos or https://mpv.io/manual/stable/#command-interface-time-pos
 -- TODO: playlist uppercase after protocol youtube?
 -- TODO: function for the expand and normalize stuff
+
+        --slapdash Playlist
+    --menu.item_actions = {}
+    --local delete = {name = 'delete_memo_entry', icon = 'delete', label = 'Remove (del)'}
+    --local append = {name = 'append_memo_entry', icon = 'playlist_add', label = 'Add to playlist' .. ' (shift+enter/click)'}
+    --local saveto = {name = 'saveto_memo_entry', icon = 'save', label = 'Save playlist' .. ' (alt+enter/click)'}
+--
+    --if options.show_append then menu.item_actions[#menu.item_actions+1] = append end
+    --if options.show_save then menu.item_actions[#menu.item_actions+1] = saveto end
+    --if options.show_delete then menu.item_actions[#menu.item_actions+1] =delete end
+   --
+    --menu.callback = {mp.get_script_name(), 'menu-event'}
+    -- slapdash-end Playlist
