@@ -1611,6 +1611,7 @@ local function process_lines(lines, keep_n, ext)
     local seen_paths = {}
     local processed_lines = {}
     local processed_playlists = {}
+    local processed_toDelete = {}
     -- Iterate over lines in reverse order
 
     for i = #lines, 1, -1 do
@@ -1623,14 +1624,14 @@ local function process_lines(lines, keep_n, ext)
 
         -- Extract the path from the line
         -- TDOD: check if memo already has a function for this
-        local path = line:match("[^,]*,[^,]*,[^,]*,([^,]*),")
-        -- fix issue with case-sensitive checks TODO: why are some paths uppercased?
+        local time_hide, title_length, title, path, length = line:match("^(%w+),(%d+),([^,]*),([^,]*),(%d+)$")
+        -- fix issue with case-sensitive checks TODO: why are some paths uppercased? fu**ing working directory
         local lower_path = path:lower()
         if path and not seen_paths[lower_path] then
             seen_paths[lower_path] = true
-
-
-            if path:match("%.[^%.]+$") == options.ext then
+            if time_hide == "hide" then
+                table.insert(processed_toDelete, path)
+            elseif path:match("%.[^%.]+$") == options.ext then
                 --mp.msg.debug(seen_paths[path])
                 mp.msg.debug('[process_lines] found: ' .. path)
                 table.insert(processed_lines, 1, line)
@@ -1643,7 +1644,7 @@ local function process_lines(lines, keep_n, ext)
             end
         end
     end
-    return processed_lines, processed_playlists
+    return processed_lines, processed_playlists, processed_toDelete
 end
 
 local function get_playlists()
@@ -1775,7 +1776,7 @@ local function save_playlist(playlist_name, playlist_full_path)
     
     if not playlist_full_path then
         mp.msg.debug("Only name found, creating full path with: ", playlist_name)
-        if playlist_name:find("." .. options.ext, -#options.ext) then
+        if playlist_name:match("%.[^%.]+$") == options.ext then
             mp.msg.debug("Name with ext found, only adding path")
             playlist_full_path = mp.utils.join_path(options.playlist_path, playlist_name)
             -- TODO: Check if this is enough for the uosc playlist menu or are there  new playlists that get saved with path
@@ -1994,6 +1995,8 @@ function custom_search(indirect)
 
     if pl_menu_data == nil then
         show_history(options.entries,false,false,true,false)
+        --search_words = parse_query_parts(unaccent(query):lower())
+        --show_history(options.entries, false, false, menu_shown and last_state)
     end
     -- if playlist menu add a save button
     if menu_data and pl_menu_data == nil then 
@@ -2075,7 +2078,17 @@ mp.register_script_message("memo-cleanup", function(keep_n)
 
     keep_n = tonumber(keep_n) or options.keep_n
     -- Process the lines to keep the necessary ones
-    local lines = process_lines(all_lines, keep_n, options.ext)
+    local lines, playlists, toDelete = process_lines(all_lines, keep_n, options.ext)
+
+    if toDelete and options.delte_pl_file then
+        for _, path in ipairs(toDelete) do
+            --local pl_path = mp.utils.join_path(options.playlist_path, path)
+            -- path = mp.command_native({"expand-path", path})
+            path = normalize(path)
+            os.remove(path)
+        end
+    end
+
     -- Write the processed lines to a temporary file
     write_lines(temp_path, lines)
     -- Remove the original history file and rename the temp file to history file
