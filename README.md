@@ -17,7 +17,7 @@ This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist sa
 ## Notice
 - Mainly tested on Windows and with UOSC. Vanilla menus seemed to work, but I only looked at it shortly. It should work fine, since my addition aren't messing with it, but no guarantees.
 - It's quite rudimentary, don't expect a well done playlist management system. It's more like a 'Oh, shoot. I want to quickly save this for later' option
-- While memo reads only what it needs, this does not apply to playlist stuff. It needs to look through all entries and could be quit slow if your history is large.
+- While memo reads only what it needs, this does not apply to some new function like deduplication. That has to crawl through the while files and can be slow if history.log is large
 
 ## Installation
 Place **memo.lua** in your mpv `scripts` folder.  
@@ -28,7 +28,7 @@ One keybind is provided for use in `input.conf`.
 Example usage: `g script-binding memo-playlist`
 
 `memo-playlist`  
-Brings up the playlist files menu, or closes it if already open. Default key is **g**.
+Brings up the the menu of saved Playlists, or closes it if already open. Default key is **g**.
 
 ## Script messages
 Just like the keybinding above, script messages can also be bound to keys in `input.conf`.  
@@ -56,7 +56,8 @@ Cleans up the file memo uses:
 Goes through the playlist directory and pulls all playlists files into the memo history. Useful if you want to add external playlists or they are not in the history for some reason.
 
 ## uosc menus and buttons
-Adding a menu: append ` #! Playlist` to your `input.conf` keybind, or use this for a menu-only config.
+Adding a menu: 
+    append ` #! Playlist` to your `input.conf` keybind, or use this for a menu-only config.
 ```
 # script-binding memo-playlist #! Playlist
 ```
@@ -83,7 +84,7 @@ ctrl+D        script-message-to memo memo-action delete         #! Playlist > De
 #             script-message-to memo memo-save Music            #! Playlist > Music > Save
 #             script-message-to memo memo-load Music            #! Playlist > Music > Load
 #             script-message-to memo memo-cleanup               #! Playlist > Other > Deduplicate
-y             script-message-to memo memo-cleanup 100           #! Playlist > Other > Cleanup
+y             script-message-to memo memo-cleanup 1000          #! Playlist > Other > Cleanup
 Y             script-message-to memo memo-pull-pldir            #! Playlist > Other > Repopulate
 #             playlist-clear                                    #! Playlist > Other > Clear
 ```

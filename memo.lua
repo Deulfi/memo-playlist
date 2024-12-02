@@ -2387,9 +2387,8 @@ end)
 -- MARK: TODO:
 --Todo: pull menu stuff down
 --mp.utils.append_file(fname, str)
--- TODO: reimplement title usage? it works?
+-- TODO: fix fucking symlink shit issue of showing duplicated entries on windows
 -- TODO: check if menu-event is hijacking other uosc menus. Like appending files via files menu
--- TODO: sneakily create a pl_history and switch them like menu_data?
 -- TODO: https://mpv.io/manual/stable/#command-interface-stream-pos or https://mpv.io/manual/stable/#command-interface-time-pos
 -- TODO: playlist uppercase after protocol youtube?
 -- TODO: function for the expand and normalize stuff
