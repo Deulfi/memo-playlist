@@ -15,7 +15,7 @@ This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist sa
 - Method to clean memo.log up a bit
 
 ## Notice
-- Mainly tested on Windows and with UOSC. Vanilla menus seemed to work, but I only looked at it shortly. It should work fine, since my addition aren't messing with it, but no guarantees.
+- Mainly tested on Windows and with UOSC. Vanilla menus seemed to work, but I only looked at it shortly. It should work fine, since my addition aren't messing with it, but no guarantees (pagination does not work with playlist menu and automatically disabled with Vanilla menus).
 - It's quite rudimentary, don't expect a well done playlist management system. It's more like a 'Oh, shoot. I want to quickly save this for later' option
 - While memo reads only what it needs, this does not apply to some new function like deduplication. That has to crawl through the while files and can be slow if history.log is large
 
@@ -38,7 +38,7 @@ Example usage: `G script-message memo-save SomePlaylistName`
 Saves the current playlist, as default if no name is specified.
 
 `memo-action` `save_as`  
-Saves the current playlist with a custom name, opens input method of MPV to enter the name or selecting from previous playlists. (ESC won't work for aborting, type 'exit' or leave input-field empty to close without saving)
+Saves the current playlist with a custom name, opens input method of MPV to enter the name or selecting from previous playlists. (ESC won't work for aborting, type 'exit', 'qqq' or leave input-field empty to close without saving)
 
 `memo-action` `delete`  
 Delete a playlist, opens input method of MPV where you can select the playlist to delete.
@@ -89,16 +89,16 @@ Y             script-message-to memo memo-pull-pldir            #! Playlist > Ot
 #             playlist-clear                                    #! Playlist > Other > Clear
 ```
 
-# Acknowledgments
+## Acknowledgments
 - Original script [memo](https://github.com/po5/memo) by po5, which serves as the foundation for this fork
 - Parts of the playlist functionality are adapted from [keep-session.lua](https://github.com/CogentRedTester/mpv-scripts/blob/master/keep-session.lua) by CogentRedTester, modified to fit the needs of this project
 
 Many thanks to the original authors for their excellent work that made this fork possible.
 
 ## License
-This project maintains the same license as the original memo script. See the LICENSE file for details.
+This project maintains the same license as the original memo script. See the Lisence for details.
 
-## Original Documentation
+# Original Documentation
 ## Installation
 Place **memo.lua** in your mpv `scripts` folder.  
 Default settings are listed in **memo.conf**, copy it to your mpv `script-opts` folder to customize.
