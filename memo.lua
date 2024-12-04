@@ -1598,12 +1598,38 @@ local function create_directory_if_missing(path)
 end
 
 -- MARK: split path
-function trisect_path(str_path)
+local function trisect_path(str_path)
+    if  not str_path then return end
     -- Returns the Parent Path, Filename without Extension, and Extension
     local parent, filename_with_ext = mp.utils.split_path(str_path)
     local filename, extension = filename_with_ext:match("(.+)%.(.+)$")    
     return parent, filename, extension
 end
+
+-- Move path manipulation into a dedicated function
+    -- MARK: normalize_pl
+local function normalize_playlist_path(path, name, ext)
+    local tmp_path, tmp_name, tmp_ext = trisect_path(path)
+
+    -- if there is nothing in path than something is wrong
+    if not tmp_path then path = options.playlist_path end
+    if not name and tmp_name then name = tmp_name end
+    if not ext and tmp_ext then ext = tmp_ext end
+
+    if not ext then ext = options.ext end
+    if not name then name = "default" end
+
+    local basename = name
+    if not is_playlist(basename) then
+        basename = name .. ext
+        mp.msg.error("basename is not a playlist: " .. basename)    
+    end
+
+    local full_path = mp.utils.join_path(path, basename)
+    local expanded_full_path = mp.command_native({ "expand-path", full_path })
+    return normalize(expanded_full_path), basename, name
+end
+        
 
 -- Helper function for safe file operations
     -- MARK: with_file
@@ -1791,7 +1817,6 @@ if options.show_save then
     options.show_save = nil
 end
 
-local default_flag = false
 
 --# Adapted parts from [https://github.com/CogentRedTester/mpv-scripts/blob/master/keep-session.lua]
 --# Copyright (c) [2020] [Oscar Manglaras]
@@ -1800,16 +1825,16 @@ local default_flag = false
 -- MARK: Init
 --init----------------------------------------------------------------------------
 --sets the default session file to the watch_later directory or ~~state/watch_later/playlist
-if options.playlist_path == "" or options.playlist_path == "default" then
+if #options.playlist_path <= 5 or options.playlist_path == "default" then
     mp.msg.verbose("playlist_path not put, using default")
     options.playlist_path = "~~state/watch_later/playlist/"
-    default_flag = true
 end
 
-create_directory_if_missing(options.playlist_path)   
 
 local expanded_playlist_path = mp.command_native({"expand-path", options.playlist_path})
 local normalized_playlist_path = normalize(expanded_playlist_path)
+
+create_directory_if_missing(normalized_playlist_path)  
 
 pl_history_path = normalized_playlist_path .. "pl_history.log"
 -- mp.msg.error("playlist_path: " .. pl_history_path)
@@ -1830,7 +1855,7 @@ mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils
 
 --init-end----------------------------------------------------------------------------
 -- MARK: custom_write
-function custom_write_history(display, full_path, mark_hidden, item_index)
+local function custom_write_history(display, full_path, mark_hidden, item_index)
 
     -- title = filename without ext
     local _, title, _ = trisect_path(full_path)
@@ -1869,28 +1894,8 @@ end
 --saves the current playlist as a json string
 -- MARK: Save playlist
 local function save_playlist(playlist_name, playlist_full_path)
-    --if not playlist_name and not default_flag then
-    if not playlist_name then
-        playlist_name = "default"
-    end
-    
-    
-    if not playlist_full_path then
-        mp.msg.debug("Only name found, creating full path with: ", playlist_name)
-        if not is_playlist(playlist_name) then
-            mp.msg.debug("Name with without ext found, adding path and ext")
-            --pl_menu_data = nil
-            playlist_name = playlist_name .. options.ext 
-        end
-        playlist_full_path = mp.utils.join_path(normalized_playlist_path, playlist_name)
-    else
-        mp.msg.debug("playlist_full_path found: ", playlist_full_path)
-        _, playlist_name = mp.utils.split_path(playlist_full_path)
-    end
 
-    playlist_full_path = mp.command_native({"expand-path", playlist_full_path})
-    playlist_full_path = normalize(playlist_full_path)
-
+    playlist_full_path, playlist_name, _ = normalize_playlist_path(playlist_full_path, playlist_name)
 
     mp.msg.verbose('Saving Playlist to', playlist_full_path)
     mp.osd_message("Saved Playlist as: " .. playlist_name, 3)
@@ -1902,8 +1907,6 @@ local function save_playlist(playlist_name, playlist_full_path)
         return
     end
 
-
-    --TODO: check is pl exist and and get their path?
 
     -- position loading is bugged if its done directly after a playlist is loaded, maybe a subprocess would work
     --local time_pos = mp.get_property('time-pos')
@@ -1937,21 +1940,18 @@ local function save_playlist(playlist_name, playlist_full_path)
         mp.msg.error(err)
         return
     end
-    local tmp_history = history
-    history = pl_history
+    --local tmp_history = history
+    --history = pl_history
     custom_write_history(false, playlist_full_path)
-    history = tmp_history
+    --history = tmp_history
 end
-
+-- MARK: autosave
 -- save playlist on mpv close
 local function autosave()
     if options.auto_save then
         save_playlist("last_session")
     end
 end
-
-
-
 
 -- either 
 -- MARK: Load
@@ -2078,7 +2078,7 @@ function input_action(action)
         end
     end,
     closed = function (playlist_name)
-        -- input.select does ignores submit if input_string is not in items.
+        -- input.select ignores submit if input_string is not in items.
         -- so we just do it here
         -- TODO: catch esc key press
         if  not aborted and action == "save_as" and #playlist_name > 0  then
@@ -2146,6 +2146,8 @@ local function modify_menu_data()
     menu_data['callback'][2] = 'playlist-event'
     --mp.msg.debug("menu", mp.utils.format_json(menu_data))
 
+    -- combats duplicate entries on symlink or changing working directory. As far memo is concerned c:\path\to\mpc\portable_config\playlistfile and 
+    -- c:\path\to\mpc\portable_config\playlistfile are different files and get different entries. here we remove these "duplicate" entries
     if options.use_relative_path then
         --print("menu_data", mp.utils.format_json(menu_data))
         local seen_paths = {}
@@ -2177,7 +2179,7 @@ function show_playlist(indirect, next, prev)
         memo_close()
     end
 
-
+    -- dunno
     if event_loop_exhausted then return end
 
     local should_update = false
@@ -2188,7 +2190,9 @@ function show_playlist(indirect, next, prev)
         entries = options.entries,
         history = history,
     }
-    -- TODO: Do we need this? probably not since this is for uosc only
+    -- TODO: Do we need this? probably not since this is for uosc only. needed for paginnation and entries.
+    -- since we don't have access to vanilla menu, we can't manipulate menu_data on page turn. Page turn on uosc
+    -- can be manipulated because we inject our own event handler for uosc playlist menus.
     if not uosc_available then
         search_words = {options.ext}
         options.use_titles = false
@@ -2337,7 +2341,7 @@ end)
 -- MARK: pull-pldir
 mp.register_script_message("memo-pull-pldir", function()
     -- Get all files in playlist directory
-    local dir = mp.command_native({"expand-path", options.playlist_path})
+    --local dir = mp.command_native({"expand-path", options.playlist_path})
     local not_seen = get_missing_playlists()
 
     -- Check each playlist file and log if not already in playlist history
