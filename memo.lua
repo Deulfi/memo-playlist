@@ -1891,6 +1891,8 @@ local function custom_write_history(display, full_path, mark_hidden, item_index)
     --if dyn_menu then dyn_menu_update() end
 end
 
+
+
 --saves the current playlist as a json string
 -- MARK: Save playlist
 local function save_playlist(playlist_name, playlist_full_path)
@@ -1903,7 +1905,7 @@ local function save_playlist(playlist_name, playlist_full_path)
     local playlist = mp.get_property_native('playlist')
 
     if #playlist == 0 then
-        mp.msg.debug('Playlist empty, aborting save')
+        mp.msg.debug('Playlist empty, nothing to save here')
         return
     end
 
@@ -1940,10 +1942,9 @@ local function save_playlist(playlist_name, playlist_full_path)
         mp.msg.error(err)
         return
     end
-    --local tmp_history = history
-    --history = pl_history
+
     custom_write_history(false, playlist_full_path)
-    --history = tmp_history
+
 end
 -- MARK: autosave
 -- save playlist on mpv close
@@ -2296,43 +2297,51 @@ end)
 
 -- Key binding function for memo cleanup
 -- MARK:cleanup
--- Handle temporary file operations
-local function cleanup_with_tmp(file_path, keep_n, is_playlist)
-    local all_lines = read_lines(file_path)
-    if not all_lines then return end
+-- Handle cleanup operations for history files
+local function process_cleanup(file_path, keep_n, is_playlist)
+    local lines = read_lines(file_path)
+    if not lines then return end
 
-    local lines, _, toDelete = process_lines(all_lines, keep_n, is_playlist)
+    local processed_lines, _, files_to_delete = process_lines(lines, keep_n, is_playlist)
     
-    if is_playlist and toDelete and options.delte_pl_file then
-        for _, path in ipairs(toDelete) do
-            os.remove(path)
+    -- Delete marked playlist files if enabled
+    if is_playlist and files_to_delete and options.delte_pl_file then
+        for _, path in ipairs(files_to_delete) do
+            if is_playlist(path) then -- doublechecking it is a playlist
+                os.remove(path)
+            end
         end
     end
 
-    write_lines(file_path .. ".tmp", lines)
+    -- Write processed lines to temp file and replace original
+    local temp_path = file_path .. ".tmp"
+    write_lines(temp_path, processed_lines)
     os.remove(file_path)
-    os.rename(file_path .. ".tmp", file_path)
+    os.rename(temp_path, file_path)
 
-    return lines, all_lines
+    return processed_lines, lines
 end
 
-
+-- Register cleanup command handler
 mp.register_script_message("memo-cleanup", function(keep_n)
     keep_n = tonumber(keep_n) or options.keep_n
 
-    -- Clean history
-    local lines, all_lines = cleanup_with_tmp(history_path, keep_n, false)
+    -- Process main history file
+    local lines, all_lines = process_cleanup(history_path, keep_n, false)
     if lines then
-        mp.osd_message("History cleaned up: kept " .. #lines .. " entries", 3)
-        mp.msg.debug("History cleanup completed. Removed " .. (#all_lines - #lines) .. " entries")
+        local removed = #all_lines - #lines
+        mp.osd_message(string.format("History cleaned up: kept %d entries", #lines), 3)
+        mp.msg.debug(string.format("History cleanup completed. Removed %d entries", removed))
     end
 
-    -- Clean playlist history
-    local pl_lines, pl_all_lines = cleanup_with_tmp(pl_history_path, 0, true)
+    -- Process playlist history
+    local pl_lines, pl_all_lines = process_cleanup(pl_history_path, 0, true)
     if pl_lines then
-        mp.msg.debug("Playlist cleanup completed. Removed " .. (#pl_all_lines - #pl_lines) .. " entries")
+        local removed = #pl_all_lines - #pl_lines
+        mp.msg.debug(string.format("Playlist cleanup completed. Removed %d entries", removed))
     end
 
+    -- Refresh file handles
     history = refresh_history_files(history_path, history)
     pl_history = refresh_history_files(pl_history_path, pl_history)
     memo_clear()
