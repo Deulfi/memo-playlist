@@ -1858,21 +1858,21 @@ if #options.playlist_path <= 3 or options.playlist_path == "default" then
 end
 
 
+-- Expands the playlist path specified in the options and normalizes it.
+-- This ensures the path is valid and can be used to create the necessary directories.
 local expanded_playlist_path = mp.command_native({"expand-path", options.playlist_path})
 local normalized_playlist_path = normalize(expanded_playlist_path)
 
+-- ensure the save location exist and create if not
 create_directory_if_missing(normalized_playlist_path)  
 
---pl_history_path = normalized_playlist_path .. "pl_history.log"
 pl_history_path = mp.utils.join_path(normalized_playlist_path, "pl_history.log")
--- mp.msg.error("playlist_path: " .. pl_history_path)
---if options.pl_history_path ~= "" then
-    --pl_history_path = mp.command_native({"expand-path", pl_history_path})
-pl_history = io.open(pl_history_path, "a+b")
---end
 
+-- open plhistory file
+pl_history = io.open(pl_history_path, "a+b")
 pl_history:setvbuf("full")
 
+-- make sure ext is vaild
 options.ext = options.ext and (options.ext:match("^%.") and options.ext or "." .. options.ext) or ".pls"
 
 -- button for uosc ribbon
@@ -1890,10 +1890,7 @@ local function custom_write_history(display, full_path, mark_hidden, item_index)
     -- title = filename without ext
     local _, title, _ = trisect_path(full_path)
 
-    --local _, file = mp.utils.split_path(full_path)
     -- TODO: catch options.ext in filename? why? fuck them
-    --local title, extension = file:match("^(.*)%.(.*)$")
-
     if not title then mp.msg.error("no title found, aborting") return end
 
     mp.msg.debug("logging playlist " .. full_path)
