@@ -1566,7 +1566,9 @@ end
 -- MARK: is_playlist
 local function is_playlist(path)
     if not path or path == "" then return false end
-    return path:match("%.[^%.]+$") == options.ext
+    local result = path:match("%.%w+$") == options.ext
+    mp.msg.trace("is a playlist=", result, " ", options.ext, " not found")
+    return result
 end
 
 
@@ -1873,8 +1875,20 @@ pl_history = io.open(pl_history_path, "a+b")
 pl_history:setvbuf("full")
 
 -- make sure ext is vaild
-options.ext = options.ext and (options.ext:match("^%.") and options.ext or "." .. options.ext) or ".pls"
+options.ext = " "
+--options.ext = (options.ext and #options.ext > 0) and (options.ext:match("^%.") and options.ext or "." .. options.ext) or ".pls"
+local function sanitize_extension(ext)
+    if not ext or #ext == 0 then return ".pls" end
+    -- Remove spaces, control chars, and common invalid filename chars
+    ext = ext:gsub('[%s%c%\\/%|%:%*%?%"%<%>]+', "")
+    -- Keep only alphanumeric and few valid special chars
+    ext = ext:match("[%w%.%-_]+") or "pls"
+    -- Ensure single dot at start
+    return (ext:match("^%.") and ext or "." .. ext)
+end
 
+options.ext = sanitize_extension(options.ext)
+print("ext:->", options.ext)  
 -- button for uosc ribbon
 mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils.format_json({
     icon = options.icon,
@@ -2336,14 +2350,14 @@ end)
 -- Key binding function for memo cleanup
 -- MARK:cleanup
 -- Handle cleanup operations for history files
-local function process_cleanup(file_path, keep_n, is_playlist)
+local function process_cleanup(file_path, keep_n, as_playlist)
     local lines = read_lines(file_path)
     if not lines then return end
 
-    local processed_lines, _, files_to_delete = process_lines(lines, keep_n, is_playlist)
+    local processed_lines, _, files_to_delete = process_lines(lines, keep_n, as_playlist)
     
     -- Delete marked playlist files if enabled
-    if is_playlist and files_to_delete and options.delte_pl_file then
+    if as_playlist and files_to_delete and options.delte_pl_file then
         for _, path in ipairs(files_to_delete) do
             if is_playlist(path) then -- doublechecking it is a playlist
                 os.remove(path)
