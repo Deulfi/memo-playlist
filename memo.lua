@@ -67,6 +67,7 @@ local options = {
 
     --path where playlists get saved. Defaults to the watch_later folder in mpv config
     --if you have duplicated entries in the playlist menu under windows and are using symlinks then better put a path here
+    -- use double backslashes or slashes for windows
     playlist_path = "",
     -- use the playlist_path and the basename in the .log file to filter for unique playlists. For example if you have mpv portable on a usb stick
     -- the drive letter changes from e: to d: then memo would treat them as seperate playlists and show both even if they point to the same file.
@@ -1555,10 +1556,9 @@ mp.register_idle(idle)
 --local pl_menu_data = nil
 local pl_history
 local pl_history_path
-local pl_open = nil
 local last_entrie_index = 0
 
-function custom_uosc_update(menu_data)
+local function custom_uosc_update(menu_data)
     local json = mp.utils.format_json(menu_data) or "{}"
     mp.commandv("script-message-to", "uosc", menu_shown and "update-menu" or "open-menu", json)
 end
@@ -1583,19 +1583,42 @@ end
 -- MARK: create_dir
 local function create_directory_if_missing(path)
     local dir = mp.command_native({ "expand-path", path })
-    local res = mp.utils.file_info(dir)
-
-    if not res then
-        mp.msg.error("Creating directory: " .. dir)
-        if res.config:sub(1,1) == "/" then
-            -- create the directory for linux
-            os.execute(string.format('mkdir -p "%s"', dir))
+    -- Split path into components
+    local components = {}
+    for component in dir:gmatch("[^/\\]+") do
+        table.insert(components, component)
+    end
+   
+    -- Build path incrementally and create directories as needed
+    local current_path = ""
+    if dir:match("^%a:") then  -- Check if path starts with drive letter
+        current_path = components[1] .. "\\"  -- Use backslash for Windows drive
+        table.remove(components, 1)  -- Remove drive letter from components
+    elseif dir:sub(1,1) == "/" then
+        current_path = "/"
+    end
+   
+    for _, component in ipairs(components) do
+        -- Always use backslash for Windows paths
+        current_path = current_path .. "\\" .. component
+        local res = mp.utils.file_info(current_path)
+       
+        if not res then
+            mp.msg.debug("Creating directory: " .. current_path)
+            if current_path:match("^%a:") then
+                -- create the directory for windows
+                os.execute(string.format('mkdir "%s"', current_path))
+            else
+                -- create the directory for linux
+                os.execute(string.format('mkdir -p "%s"', current_path))
+            end
         else
-            -- create the directory for windows
-            os.execute(string.format('mkdir "%s"', dir))
+            print("current_path ", current_path)
         end
     end
 end
+
+
 
 -- MARK: split path
 local function trisect_path(str_path)
@@ -1621,8 +1644,7 @@ local function normalize_playlist_path(path, name, ext)
 
     local basename = name
     if not is_playlist(basename) then
-        basename = name .. ext
-        mp.msg.error("basename is not a playlist: " .. basename)    
+        basename = name .. ext   
     end
 
     local full_path = mp.utils.join_path(path, basename)
@@ -1825,8 +1847,13 @@ end
 -- MARK: Init
 --init----------------------------------------------------------------------------
 --sets the default session file to the watch_later directory or ~~state/watch_later/playlist
-if #options.playlist_path <= 5 or options.playlist_path == "default" then
-    mp.msg.verbose("playlist_path not put, using default")
+if #options.playlist_path <= 3 or options.playlist_path == "default" then
+    if options.playlist_path == "default" then
+        mp.msg.verbose("Using default path to save playlists (whereMPVsavesyourstuff/watch_later/playlist/)")
+    else
+        mp.msg.verbose("playlist_path not missing or not valid, using default (whereMPVsavesyourstuff/watch_later/playlist/)")
+    end
+    
     options.playlist_path = "~~state/watch_later/playlist/"
 end
 
@@ -1836,14 +1863,17 @@ local normalized_playlist_path = normalize(expanded_playlist_path)
 
 create_directory_if_missing(normalized_playlist_path)  
 
-pl_history_path = normalized_playlist_path .. "pl_history.log"
+--pl_history_path = normalized_playlist_path .. "pl_history.log"
+pl_history_path = mp.utils.join_path(normalized_playlist_path, "pl_history.log")
 -- mp.msg.error("playlist_path: " .. pl_history_path)
-if options.pl_history_path ~= "" then
-    pl_history_path = mp.command_native({"expand-path", pl_history_path})
-    pl_history = io.open(pl_history_path, "a+b")
-end
+--if options.pl_history_path ~= "" then
+    --pl_history_path = mp.command_native({"expand-path", pl_history_path})
+pl_history = io.open(pl_history_path, "a+b")
+--end
+
 pl_history:setvbuf("full")
 
+options.ext = options.ext and (options.ext:match("^%.") and options.ext or "." .. options.ext) or ".pls"
 
 -- button for uosc ribbon
 mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils.format_json({
@@ -1880,8 +1910,8 @@ local function custom_write_history(display, full_path, mark_hidden, item_index)
         title,
         full_path
         )
-    --elseif last_state then
-    --  last_state.hidden_files[full_path] = last_state.current_page * 10000 + item_index
+    elseif last_state then
+        last_state.hidden_files[full_path] = last_state.current_page * 10000 + item_index
     end
 
     pl_history:seek("end")
@@ -2017,6 +2047,8 @@ function input_action(action)
     end
     mp.msg.verbose ("memo input function")
 
+
+
     if uosc_available then
         mp.msg.debug(uosc_available)
         mp.commandv('script-message-to', 'uosc', 'disable-elements', mp.get_script_name(), 'controls')
@@ -2055,7 +2087,9 @@ function input_action(action)
         
         if action == "delete" then
             playlist_name = pl_titles[selected_index]
+            print("pltitles" , mp.utils.format_json(pl_pairs), "selected_index", selected_index, "both", pl_pairs[selected_index].path )
             local selected_path = pl_pairs[selected_index].path
+            print("name ", playlist_name, "path", selected_path)
             -- hide playlist in normal memo-history.log
             write_history(false, selected_path, true)
 
@@ -2171,6 +2205,8 @@ local function modify_menu_data()
         end
         --print("menu_data", mp.utils.format_json(menu_data))    end
     end
+
+    return menu_data
 end
 
 -- todo: memo_search_uosc
@@ -2179,6 +2215,10 @@ function show_playlist(indirect, next, prev)
     if not indirect then
         memo_close()
     end
+
+        --if not pl_menu_data or pl_menu_data == {} then 
+            pl_menu_data = menu_data
+            --end
 
     -- dunno
     if event_loop_exhausted then return end
@@ -2229,6 +2269,7 @@ function show_playlist(indirect, next, prev)
         modify_menu_data()
         uosc_update()
     end
+
 
     search_words = nil
     options.hide_duplicates = tmp.hide_duplicates
