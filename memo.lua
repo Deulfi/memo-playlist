@@ -1959,7 +1959,7 @@ local function custom_write_history(display, full_path, mark_hidden, item_index)
     pl_history:write(string.format("%s,%d\n", entry, #entry))
     pl_history:flush()
 
-    --if dyn_menu then dyn_menu_update() end
+    if dyn_menu then dyn_menu_update() end
 end
 
 -- MARK: Save playlist
@@ -2327,7 +2327,7 @@ end
 
 -- todo: memo_search_uosc
 -- MARK: show playlist
-function show_playlist(indirect, next, prev, search)
+function show_playlist(indirect, next, prev, search, hide)
     if not indirect then
         memo_close()
     end
@@ -2336,13 +2336,9 @@ function show_playlist(indirect, next, prev, search)
     if event_loop_exhausted then return end
 
     local should_update = false
-    local tmp = {
-        hide_duplicates = options.hide_duplicates,
-        hide_same_dir = options.hide_same_dir,
-        pagination = options.pagination,
-        entries = options.entries,
-        history = history,
-    }
+    local tmp_options = shallow_copy(options)
+    local tmp_history = history
+    
     -- TODO: Do we need this? probably not since this is for uosc only. needed for paginnation and entries.
     -- since we don't have access to vanilla menu, we can't manipulate menu_data on page turn. Page turn on uosc
     -- can be manipulated because we inject our own event handler for uosc playlist menus.
@@ -2359,6 +2355,7 @@ function show_playlist(indirect, next, prev, search)
     --options.entries = 3
     history = pl_history
 
+
     if next or prev then
         local items = menu_data.items
         local last_item = items[#items]
@@ -2369,10 +2366,21 @@ function show_playlist(indirect, next, prev, search)
         should_update = (prev and last_item.value[2] == "memo-prev") or
                              (next and last_item.value[2] == "memo-next") or
                              (second_last_item and (second_last_item.value[2] == "memo-next" or second_last_item.value[2] == "memo-prev"))
+        if should_update then
+            show_history(options.entries, next, prev, false, false, true)
+        end
+    elseif hide then
+        should_update = true
+        -- original show_history(options.entries, false, false, true, false, true)
+        show_history(options.entries, false, false, true, false, true)
+    elseif search then
+        should_update = true
+        show_history(options.entries, false, false, true, false, false)
     else
         should_update = true
+        show_history(options.entries)
     end
-    show_history(options.entries, next, prev)
+
 
     if should_update and uosc_available then
         modify_menu_data()
@@ -2381,11 +2389,8 @@ function show_playlist(indirect, next, prev, search)
 
 
     search_words = nil
-    options.hide_duplicates = tmp.hide_duplicates
-    options.hide_same_dir = tmp.hide_same_dir
-    options.pagination = tmp.pagination
-    options.entries = tmp.entries
-    history = tmp.history
+    options = tmp_options
+    history = tmp_history
 end
 
 -- MARK: custom_search
@@ -2449,7 +2454,10 @@ mp.register_script_message("playlist-event", function(json)
                 if item.value[1] ~= "loadfile" then return end
 
                 custom_write_history(false, item.value[2], true, item.index)
-                show_playlist()
+                memo_close()
+                show_playlist(false, false, false, false, true)
+                
+                
 
         elseif event.value then
             mp.commandv(unpack(event.value))
@@ -2532,8 +2540,9 @@ end)
 -- MARK: TODO:
 --Todo: pull menu stuff down. what?
 --mp.utils.append_file(fname, str) ???
-
--- TODO: hide messes up with pagination. Update state? or memos fault? artefact on page turn 
+-- TODO: search dont work for single letter? a gives otherpls... maybe pagination fucks this up again?
+-- TODO: custom memo next prev for pagination on vanilla?
+-- TODO: hide messes with pagination. Update state? or memos fault? artefact on page turn 
 -- TODO: Why is menu_data ID faulty? Search does not work correctly with it
 -- TODO: empty log files throw error? or single empty line throw error?
 -- TODO: check if menu-event is hijacking other uosc menus. Like appending files via files menu. Nope uosc is broken, post issue?
