@@ -2175,6 +2175,7 @@ local function handle_playlist_operation(action)
                 state.selected_name = entry.title
             else 
                 state.aborted = true
+                mp.msg.error("aborted")
             end
 
             if action == "save_as" and state.selected_index and not state.aborted then
