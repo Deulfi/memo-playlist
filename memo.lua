@@ -1872,7 +1872,6 @@ if options.show_save then
     options.show_save = nil
 end
 
-
 --# Adapted parts from [https://github.com/CogentRedTester/mpv-scripts/blob/master/keep-session.lua]
 --# Copyright (c) [2020] [Oscar Manglaras]
 --# MIT License
@@ -2173,16 +2172,16 @@ local function handle_playlist_operation(action)
                 local entry = pl_pairs[selected_index]
                 state.selected_path = entry.path
                 state.selected_name = entry.title
+                state.selected_index = selected_index
             else 
                 state.aborted = true
-                mp.msg.error("aborted")
             end
 
             if action == "save_as" and state.selected_index and not state.aborted then
-
+                print("Saving playlist as: " .. state.selected_name, selected_index, state.selected_path)
                 mp.msg.debug(string.format("pl_ops: Saving playlist as: %s", state.selected_name))
                 save_playlist(state.selected_name)
-
+                state.aborted = true
             end
 
             if action == "delete" and not state.aborted then
@@ -2226,6 +2225,7 @@ local function handle_playlist_operation(action)
             -- Handle save_as action when not aborted
             if not state.aborted and action == "save_as" and input_name and #input_name > 0 then
                 mp.msg.debug(string.format("pl_ops: Saving playlist as: %s", input_name))
+                input_name = input_name:match("^%s*(.-)%s*$")
                 save_playlist(input_name)
             else
                 mp.msg.debug("pl_ops: Closing input selection")
@@ -2254,17 +2254,20 @@ local function modify_menu_data(search)
     -- breaks search
     --menu_data['id'] = 'playlist_history'
 
+
+
     local newer_exists = false
     local older_exists = false
     for i, item in ipairs(menu_data.items) do
-
         if item.title == 'Newer entries' then
             newer_exists = true
+            --item.value[2] = "custom_memo_prev"
         end
         if item.title == 'Older entries' then
             older_exists = true
+            --item.value[2] = "custom_memo_next"
         end
-
+        --print(mp.utils.format_json(item))   
         if item.actions then
             -- Check if the action already exists to avoid duplicates
             local action_exists = false
@@ -2360,20 +2363,16 @@ function show_playlist(indirect, next, prev, search)
         local items = menu_data.items
         local last_item = items[#items]
         local second_last_item = items[#items - 1]
+        should_update = false
         
         -- there is no need to update the menu on the last page and key right or first page and key left
-        local should_update = (prev and last_item.value[2] == "memo-prev") or
+        should_update = (prev and last_item.value[2] == "memo-prev") or
                              (next and last_item.value[2] == "memo-next") or
                              (second_last_item and (second_last_item.value[2] == "memo-next" or second_last_item.value[2] == "memo-prev"))
-        
-        if should_update then
-            show_history(options.entries, next, prev, false)
-        end
     else
-
-        show_history(options.entries, false, false, true)
         should_update = true
     end
+    show_history(options.entries, next, prev)
 
     if should_update and uosc_available then
         modify_menu_data()
@@ -2407,7 +2406,7 @@ end
 mp.add_key_binding('g', 'memo-playlist', show_playlist)
 mp.register_script_message('memo-load', load_playlist)
 mp.register_script_message('memo-save', save_playlist)
-mp.register_script_message('memo-action', handle_playlist_operation)
+mp.register_script_message('memo-plops', handle_playlist_operation)
 mp.register_script_message("memo-custom-search-uosc:", memo_custom_search_uosc)
 mp.register_event('shutdown', autosave)
 
@@ -2419,7 +2418,6 @@ mp.register_script_message("playlist-event", function(json)
     local event = mp.utils.parse_json(json)
 
     last_entrie_index = event.index or 1 --or event.selected_item.index
-
     if event.type == "activate" or event.type == "key" then
         -- if pagination entries are pressed, pretend it was the left or right key
         if event.value then 
@@ -2534,8 +2532,9 @@ end)
 -- MARK: TODO:
 --Todo: pull menu stuff down. what?
 --mp.utils.append_file(fname, str) ???
--- TODO: fix save name input
--- TODO: fix search or remove again. Why is ID faulty?
+
+-- TODO: hide messes up with pagination. Update state? or memos fault? artefact on page turn 
+-- TODO: Why is menu_data ID faulty? Search does not work correctly with it
 -- TODO: empty log files throw error? or single empty line throw error?
 -- TODO: check if menu-event is hijacking other uosc menus. Like appending files via files menu. Nope uosc is broken, post issue?
 -- TODO: https://mpv.io/manual/stable/#command-interface-stream-pos or https://mpv.io/manual/stable/#command-interface-time-pos

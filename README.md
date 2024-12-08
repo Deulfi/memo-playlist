@@ -37,10 +37,14 @@ Example usage: `G script-message memo-save SomePlaylistName`
 `memo-save`  
 Saves the current playlist, as default if no name is specified.
 
-`memo-action` `save_as`  
-Saves the current playlist with a custom name, opens input method of MPV to enter the name or selecting from previous playlists. (ESC won't work for aborting, type 'exit', 'qqq' or leave input-field empty to close without saving)
+`memo-plops` `save_as`  
+Saves the current playlist with a custom name, opens input method of MPV to enter the name or selecting from previous playlists. 
+Note:
+- ESC won't work for aborting, type 'exit', 'qqq' or leave input-field empty to close without saving
+- Use spaces if you want to save a playlist where the title is a subset of another playlist-title. (e.g. "Rock" would always matched to "Best of Rock", but "Rock " or "Rock   " wouldn't)
+  trailing whitespaces are removed automatically.
 
-`memo-action` `delete`  
+`memo-plops` `delete`  
 Delete a playlist, opens input method of MPV where you can select the playlist to delete.
 
 `memo-load`  
@@ -79,8 +83,8 @@ g             script-binding memo-playlist
 #                                                               #! Playlist > Playlist Management
 ctrl+s        script-message-to memo memo-save                  #! Playlist > Save
 #             script-message-to memo memo-load                  #! Playlist > Load
-ctrl+S        script-message-to memo memo-action save_as        #! Playlist > Save as
-ctrl+D        script-message-to memo memo-action delete         #! Playlist > Delete
+ctrl+S        script-message-to memo memo-plops save_as         #! Playlist > Save as
+ctrl+D        script-message-to memo memo-plops delete          #! Playlist > Delete
 #             script-message-to memo memo-save Internet         #! Playlist > Internet > Save
 #             script-message-to memo memo-load Internet         #! Playlist > Internet > Load
 #             script-message-to memo memo-save Music            #! Playlist > Music > Save
