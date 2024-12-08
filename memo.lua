@@ -2335,7 +2335,7 @@ function show_playlist(indirect, next, prev, search, hide)
     -- dunno
     if event_loop_exhausted then return end
 
-    local should_update = false
+    local should_update = true
     local tmp_options = shallow_copy(options)
     local tmp_history = history
     
@@ -2370,14 +2370,11 @@ function show_playlist(indirect, next, prev, search, hide)
             show_history(options.entries, next, prev, false, false, true)
         end
     elseif hide then
-        should_update = true
         -- original show_history(options.entries, false, false, true, false, true)
-        show_history(options.entries, false, false, true, false, true)
+        show_history(options.entries, false, false, true, false, false)
     elseif search then
-        should_update = true
         show_history(options.entries, false, false, true, false, false)
     else
-        should_update = true
         show_history(options.entries)
     end
 
