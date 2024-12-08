@@ -47,10 +47,12 @@ Delete a playlist, opens input method of MPV where you can select the playlist t
 Loads the specified playlist, or default if none is specified.
 
 `memo-cleanup`  
-Cleans up the file memo uses:
-- Deduplicates memo.log
+Cleans up the file memo uses (memo-history.log / pl_history.log):
+- Deduplicates of entries
 - Keeps only the last n memo entries (does not remove unique playlists, n=0 keeps all unique entries)
 - Removes memo entries and playlists marked as hidden and deletes playlist from filesystem if corresponding options are enabled
+This functionallity isn't needed for the normal user, because
+> "memo's design allows for storing infinitely many entries in an efficient and thread-safe manner" - po5
 
 `memo-pull-pldir`  
 Goes through the playlist directory and pulls all playlists files into the memo history. Useful if you want to add external playlists or they are not in the history for some reason.
