@@ -8,6 +8,7 @@ This script saves your watch history + rudimentary playlists, and displays it in
 This is a fork of [memo](https://github.com/po5/memo) by po5, adding playlist saving functionality while not touching the original code.
 
 ## New Features
+- Consider this a beta version. 
 - Save current playlist as .pls file, compatible with most media players (can be changed)
 - Configurable save location and file extension of playlists via memo.conf
 - Playlist management menu (default keybind: g)
