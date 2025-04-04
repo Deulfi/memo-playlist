@@ -1727,15 +1727,15 @@ local function process_lines(history_lines, retention_limit)
 
     local function parse_line(index)
         local line = history_lines[index]
-        if not line then
-            mp.msg.warn("process_lines: Empty line at index " .. index)
+        if not line or line:match("^%s*$") or #line < 5 then
+            mp.msg.warn("process_lines: Malformed or empty line at index %d", index)
             return false
         end
 
         -- Parse line components
         local time_hide, title_length, title, path, length = line:match("([^,]*),([^,]*),([^,]*),([^,]*),([^,]*)")
         if not path then
-            mp.msg.warn(string.format("process_lines: Malformed line at index %d", index))
+            mp.msg.warn(string.format("process_lines: Malformed path at index %d", index))
             return false
         end
 
@@ -2371,7 +2371,7 @@ function show_playlist(indirect, next, prev, search, hide)
         end
     elseif hide then
         -- original show_history(options.entries, false, false, true, false, true)
-        show_history(options.entries, false, false, true, false, false)
+        show_history(options.entries, false, false, true, false, true)
     elseif search then
         show_history(options.entries, false, false, true, false, false)
     else
