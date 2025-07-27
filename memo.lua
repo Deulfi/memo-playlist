@@ -1614,8 +1614,6 @@ local function create_directory_if_missing(path)
                 -- create the directory for linux
                 os.execute(string.format('mkdir -p "%s"', current_path))
             end
-        else
-            print("current_path ", current_path)
         end
     end
 end
@@ -1918,7 +1916,7 @@ local function sanitize_extension(ext)
 end
 
 options.ext = sanitize_extension(options.ext)
-print("ext:->", options.ext)  
+mp.msg.debug("ext:->", options.ext)  
 -- button for uosc ribbon
 mp.commandv('script-message-to', 'uosc', 'set-button', 'memo-playlist', mp.utils.format_json({
     icon = options.icon,
@@ -2178,7 +2176,7 @@ local function handle_playlist_operation(action)
             end
 
             if action == "save_as" and state.selected_index and not state.aborted then
-                print("Saving playlist as: " .. state.selected_name, selected_index, state.selected_path)
+                mp.msg.info("Saving playlist as: " .. state.selected_name, selected_index, state.selected_path)
                 mp.msg.debug(string.format("pl_ops: Saving playlist as: %s", state.selected_name))
                 save_playlist(state.selected_name)
                 state.aborted = true
@@ -2267,7 +2265,6 @@ local function modify_menu_data(search)
             older_exists = true
             --item.value[2] = "custom_memo_next"
         end
-        --print(mp.utils.format_json(item))   
         if item.actions then
             -- Check if the action already exists to avoid duplicates
             local action_exists = false
@@ -2302,7 +2299,6 @@ local function modify_menu_data(search)
     -- combats duplicate entries on symlink or changing working directory. As far memo is concerned c:\path\to\mpc\portable_config\playlistfile and 
     -- c:\path\to\mpc\portable_config\playlistfile are different files and get different entries. here we remove these "duplicate" entries
     if options.use_relative_path then
-        --print("menu_data", mp.utils.format_json(menu_data))
         local unique_paths  = {}
         local i = 1
         while i <= #menu_data.items do
@@ -2321,7 +2317,6 @@ local function modify_menu_data(search)
                 i = i + 1
             end
         end
-        --print("menu_data", mp.utils.format_json(menu_data))    end
     end
 end
 
